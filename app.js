@@ -256,7 +256,9 @@ function authHTML(err){
     (err?'<div class="form-error" role="alert">'+esc(err)+'</div>':'')+
     '<button class="btn primary wide" type="submit">'+(join?'Join the family':'Sign in')+'</button></form></div>';
 }
-function showAuth(err){S.shown='auth';S.avTarget=null;gate(authHTML(err));syncAvatarUI();var f=$('#a-code')||$('#a-name');if(f&&!(f.value))f.focus({preventScroll:true});else{var p=$('#a-pin');if(p)p.focus({preventScroll:true});}}
+function showAuth(err){S.shown='auth';S.avTarget=null;gate(authHTML(err));syncAvatarUI();
+  try{var hm=/[#&]code=([^&]+)/.exec(location.hash||''),ce=$('#a-code');if(hm&&ce&&!ce.value){ce.value=decodeURIComponent(hm[1]);}}catch(e){}
+  var f=$('#a-code')||$('#a-name');if(f&&!(f.value))f.focus({preventScroll:true});else{var n0=$('#a-name');if(n0&&!n0.value){n0.focus({preventScroll:true});return;}var p=$('#a-pin');if(p)p.focus({preventScroll:true});}}
 
 /* ================= claims ================= */
 function claimsOf(id){return S.claims.get(id)||[];}
@@ -988,8 +990,8 @@ function delSanta(id){
   }).catch(function(e){toast(offlineMsg(e));});
 }
 function inviteText(){
-  var url=location.origin+location.pathname;
-  return 'Join our family wish list on I Want This: '+url+'\nFamily code: '+(S.joinCode||'(ask me)')+'\nTap "I\'m new" and pick your own name and PIN.';
+  var url=location.origin+location.pathname+(S.joinCode?'#code='+encodeURIComponent(S.joinCode):'');
+  return 'Join our family wish list on I Want This: '+url+'\nThe family code is filled in for you. Just pick your own name and PIN.\nOn Android: Chrome menu, then Install app. On iPhone: Share, then Add to Home Screen.';
 }
 function copyText(t,ok){
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){toast(ok);},function(){toast('Could not copy. Select and copy it by hand.');});
