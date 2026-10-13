@@ -121,6 +121,7 @@ label,.lbl,legend{font-weight:700;font-size:.93rem;padding:0}
 .opt{font-weight:500;color:var(--ink-2);margin-left:4px}
 .hint{font-weight:500;color:var(--ink-2);font-size:.88rem}
 input[type="text"],input[type="password"],input[type="tel"],textarea{width:100%;min-height:50px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:11px 14px;font:inherit;font-size:1rem}
+input.pin{-webkit-text-security:disc;text-security:disc}
 textarea{resize:vertical;min-height:72px}
 .money{display:flex;align-items:center;gap:8px}
 .money span{font-weight:700;color:var(--ink-2)}

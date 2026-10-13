@@ -182,7 +182,7 @@ function authHTML(err){
     '<form id="authForm" class="form" autocomplete="off" data-mode="'+S.authMode+'">'+
     (join?'<div class="field"><label for="a-code">Family code</label><input id="a-code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" required></div>':'')+
     '<div class="field"><label for="a-name">Your name</label><input id="a-name" type="text" maxlength="30" required autocomplete="off" value="'+esc(join?'':last)+'"></div>'+
-    '<div class="field"><label for="a-pin">'+(join?'Choose a PIN':'Your PIN')+'</label><input id="a-pin" type="password" maxlength="64" required autocomplete="off">'+(join?'<span class="hint">At least 6 characters. Numbers are fine. Remember it, you\'ll need it on a new phone.</span>':'')+'</div>'+
+    '<div class="field"><label for="a-pin">'+(join?'Choose a PIN':'Your PIN')+'</label><input id="a-pin" type="text" class="pin" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required autocomplete="off">'+(join?'<span class="hint">At least 6 characters. Numbers are fine. Remember it, you\'ll need it on a new phone.</span>':'')+'</div>'+
     (join?'<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('a-',0)+'</fieldset>':'')+
     (err?'<div class="form-error" role="alert">'+esc(err)+'</div>':'')+
     '<button class="btn primary wide" type="submit">'+(join?'Join the family':'Sign in')+'</button></form></div>';
@@ -319,7 +319,7 @@ function profileSheetHTML(){
     '<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('p-',cur)+'</fieldset>'+
     '<div id="p-msg"></div><button class="btn primary wide" type="submit">Save</button></form>'+
     '<form id="pinForm" class="box" autocomplete="off"><h3>Change your PIN</h3>'+
-    '<div class="field"><label for="n-pin">New PIN</label><input id="n-pin" type="password" maxlength="64" required autocomplete="off"><span class="hint">At least 6 characters.</span></div>'+
+    '<div class="field"><label for="n-pin">New PIN</label><input id="n-pin" type="text" class="pin" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required autocomplete="off"><span class="hint">At least 6 characters.</span></div>'+
     '<div id="n-msg"></div><button class="btn ghost" type="submit">Change PIN</button></form>'+
     (isAdmin?
       '<div class="box"><h3>Invite family</h3><p class="hint">Send them the app link and this family code. They tap “I\'m new” and choose their own name and PIN.</p>'+
@@ -327,7 +327,7 @@ function profileSheetHTML(){
       '<button class="btn primary" type="button" data-act="invite">Share an invite</button></div>'+
       (others.length?'<form id="resetForm" class="box" autocomplete="off"><h3>Someone forgot their PIN?</h3>'+
         '<div class="field"><label for="r-who">Who</label><select id="r-who">'+others.map(function(e){return '<option value="'+esc(e[0])+'">'+esc(nm(e[1]))+'</option>';}).join('')+'</select></div>'+
-        '<div class="field"><label for="r-pin">Give them a new PIN</label><input id="r-pin" type="password" maxlength="64" required autocomplete="off"></div>'+
+        '<div class="field"><label for="r-pin">Give them a new PIN</label><input id="r-pin" type="text" class="pin" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required autocomplete="off"></div>'+
         '<div id="r-msg"></div><button class="btn ghost" type="submit">Set new PIN</button></form>':''):'')+
     '<div class="tip"><strong>Put it on your home screen.</strong> '+(ios?'In Safari, tap the Share button, then “Add to Home Screen”.':'In Chrome or Samsung Internet, open the ⋮ menu and choose “Add to Home screen” or “Install app”.')+'</div>'+
     '<div class="box"><button class="btn danger wide" type="button" data-act="signout">Sign out on this phone</button></div>';
