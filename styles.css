@@ -54,7 +54,7 @@ fieldset{border:0;padding:0;margin:0;min-width:0}
 #shell{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
 #app{max-width:640px;margin:0 auto}
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-radius:28px 28px 0 0;box-shadow:0 -6px 24px rgba(130,70,60,.10);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
-.tabs-in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tabs-in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;border:0;background:none;color:var(--ink-2);font:700 .85rem var(--font-body);border-radius:20px;cursor:pointer}
 .tab[aria-current="page"]{color:var(--accent);background:var(--accent-soft)}
 
@@ -177,3 +177,47 @@ select{width:100%;min-height:52px;border-radius:18px;border:1.5px solid var(--li
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:60;max-width:min(92vw,520px);background:var(--ink);color:var(--bg);padding:13px 20px;border-radius:999px;font-weight:600;font-size:.93rem;box-shadow:var(--shadow);text-align:center}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- v2 features ---- */
+.coming{margin-bottom:16px}
+.coming h2{font:600 1.15rem var(--font-display);margin:0 0 8px}
+.ev,.santa-card{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;margin-bottom:8px;background:var(--surface);border:0;border-radius:20px;box-shadow:var(--shadow);text-align:left;font:inherit;color:inherit}
+button.ev,.santa-card{cursor:pointer}
+.santa-card{margin-bottom:14px;background:var(--accent-soft)}
+.ev-ic{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.santa-card .ev-ic{background:var(--surface)}
+.ev-t{min-width:0}
+.ev-n{font:600 1.02rem var(--font-display)}
+.ev-s{color:var(--ink-2);font-size:.9rem}
+.linkish-row{display:flex;align-items:center;justify-content:flex-start;text-align:left;gap:8px;width:100%;background:none;border:0;color:var(--ink-2);text-decoration:underline;font:600 .9rem var(--font-body);padding:6px 2px;cursor:pointer}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.kidtag,.bdaytag,.gotbadge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:700}
+.kidtag{background:var(--surface-2);color:var(--ink-2)}
+.bdaytag{background:var(--accent-soft);color:var(--accent)}
+.gotbadge{background:var(--good-soft);color:var(--good)}
+.card.got{opacity:.75}
+.rec-toggle{margin:16px 0 10px}
+.rec-list{margin-bottom:12px}
+.bulk{margin:0 0 12px}
+.add.soft{border-style:solid;border-width:1.5px;background:var(--surface);margin-top:6px}
+.kidnote{margin:-4px 2px 14px}
+.editkid{margin-left:8px}
+.sum{background:var(--accent-soft);border-radius:24px;padding:18px;margin-bottom:16px;text-align:center}
+.sum-n{font:600 1.3rem var(--font-display)}
+.sum-t{font:600 2rem var(--font-display);color:var(--accent)}
+.sum-s{color:var(--ink-2);font-size:.88rem;margin-top:4px}
+.bgroup{margin-bottom:18px}
+.bg-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bg-n{font:600 1.1rem var(--font-display);flex:1}
+.bg-s{color:var(--ink-2);font-weight:700}
+.bday{display:grid;grid-template-columns:90px 1fr;gap:10px}
+.bday select{min-height:48px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);padding:0 12px;font-size:1rem}
+.linkrow{display:flex;gap:8px;align-items:stretch}
+.linkrow input{flex:1;min-width:0}
+.avs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.reveal{display:flex;align-items:center;gap:12px;background:var(--accent-soft);border-radius:18px;padding:12px;margin:10px 0}
+.checks{display:grid;gap:6px;margin-top:6px}
+.chk{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;background:var(--surface-2)}
+.chk span{display:flex;align-items:center;gap:8px;flex:1}
+.chk input{width:22px;height:22px}
+.buy.manage{margin-bottom:10px}
