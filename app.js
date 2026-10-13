@@ -502,7 +502,7 @@ function editHTML(it,ownerId){
   return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+(it?'Edit item':'Add to '+esc(who))+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
   '<form id="itemForm" class="form" autocomplete="off" data-id="'+(it?esc(it.id):'')+'" data-owner="'+esc(oid)+'">'+
   '<div class="field"><label for="f-link">Link <span class="opt">optional</span></label><div class="linkrow"><input id="f-link" type="text" inputmode="url" autocapitalize="none" placeholder="Paste a link from any shop" value="'+esc(it&&it.link)+'">'+
-    '<button type="button" class="btn ghost small" data-act="fill-link">Fill in</button></div><span id="f-linkstat" class="hint" aria-live="polite"></span></div>'+
+    '<button type="button" class="btn ghost small" data-act="paste-link">Paste</button><button type="button" class="btn ghost small" data-act="fill-link">Fill in</button></div><span id="f-linkstat" class="hint" aria-live="polite"></span></div>'+
   '<div class="field"><label for="f-title">What do you want?</label><input id="f-title" type="text" maxlength="120" required placeholder="Brand, model, colour" value="'+esc(it&&it.title)+'"></div>'+
   '<div class="field"><span class="lbl">Photo <span class="opt">optional</span></span><div class="photo-row"><div id="f-prev" class="prev"></div><div class="photo-actions">'+
     '<label class="btn ghost small" for="f-photo">'+ic('camera',18)+'<span id="f-photo-lbl">Add a photo</span></label><input id="f-photo" class="sr-only" type="file" accept="image/*">'+
@@ -741,6 +741,7 @@ function loadAll(){
     var wasOnline=S.online;S.online=true;
     var s=sigOf();
     if(s!==S.sig||!wasOnline||S.shown!=='main'){S.sig=s;render();}
+    consumeShare();
     loadPhotos();loadAvatars();
   }).catch(function(e){
     S.loading=false;
@@ -1018,6 +1019,7 @@ document.addEventListener('click',function(e){
   else if(a==='received') setReceived(id,true);
   else if(a==='unreceived') setReceived(id,false);
   else if(a==='bulk-received') bulkReceived();
+  else if(a==='paste-link') pasteLink();
   else if(a==='toggle-received'){S.showReceived=!S.showReceived;paintMain();}
   else if(a==='rm-photo'){S.draft.photo='';S.draft.dirty=true;S.draft.hasServerPhoto=false;syncPhotoUI();}
   else if(a==='fill-link') fillFromLink(false);
@@ -1067,7 +1069,36 @@ document.addEventListener('visibilitychange',function(){if(!document.hidden&&S.u
 setInterval(function(){if(!document.hidden&&S.uid) loadAll();},POLL_MS);
 
 /* ================= boot ================= */
+function findUrl(t){var m=/https?:\/\/[^\s<>"']+/i.exec(String(t||''));return m?m[0].replace(/[).,;]+$/,''):'';}
+function readShare(){
+  try{
+    var q=new URLSearchParams(location.search),u=findUrl(q.get('url'))||findUrl(q.get('text'))||findUrl(q.get('title'));
+    if(!u) return;
+    var t=(q.get('title')||'').replace(findUrl(q.get('title')),'').trim();
+    if(!t) t=String(q.get('text')||'').replace(findUrl(q.get('text')),'').replace(/\s+/g,' ').trim();
+    S.pendingShare={url:u,title:t.slice(0,120)};
+    history.replaceState(null,'',location.pathname+location.hash);
+  }catch(e){}
+}
+function consumeShare(){
+  var p=S.pendingShare;if(!p||S.shown!=='main'||S.sheet) return;
+  S.pendingShare=null;S.tab='mine';S.viewing=null;render();
+  openSheet('edit',null,S.uid);
+  var l=$('#f-link'),t=$('#f-title');if(!l) return;
+  l.value=p.url;if(t&&p.title) t.value=p.title;
+  fillFromLink(true);
+}
+function pasteLink(){
+  var st=$('#f-linkstat');
+  if(!navigator.clipboard||!navigator.clipboard.readText){if(st) st.textContent='Press and hold in the box, then tap Paste.';return;}
+  navigator.clipboard.readText().then(function(v){
+    var u=findUrl(v);if(!u){if(st) st.textContent="There's no link copied yet.";return;}
+    $('#f-link').value=u;fillFromLink(true);
+  }).catch(function(){if(st) st.textContent='Press and hold in the box, then tap Paste.';});
+}
 function boot(){
+  readShare();
+  if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
   if(!CONFIGURED){setupScreen();return;}
   S.shown='loading';gateLoading();
   S.session=readSession();
