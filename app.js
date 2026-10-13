@@ -24,6 +24,7 @@ var P={
   external:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   camera:'<path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/>',
+  image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
   link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'
 };
 function ic(n,s){s=s||20;return '<svg class="ic" width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+P[n]+'</svg>';}
@@ -36,14 +37,49 @@ function lsDel(k){try{localStorage.removeItem(k);}catch(e){}}
 var S={
   uid:null,members:new Map(),items:[],itemMap:new Map(),claims:new Map(),photos:new Map(),
   tab:'mine',viewing:null,filter:'all',sheet:null,draft:null,shown:'',lastFocus:null,armDelete:false,
-  authMode:'signin',sig:'',online:true,busy:false,loading:false,photoBusy:false,
+  authMode:'signin',sig:'',online:true,busy:false,loading:false,photoBusy:false,avatars:new Map(),avDraft:{data:'',dirty:false},avBusy:false,
   joinCode:null,inviteMsg:''
 };
 
 /* ================= helpers ================= */
 function nm(m){return String((m&&m.name)||'Someone').slice(0,30);}
 function ci(m){var i=PALETTE.indexOf(m&&m.color);return i<0?0:i;}
-function avatar(m,size){var ch=Array.from(nm(m))[0]||'?';return '<span class="av c'+ci(m)+' '+(size||'')+'" aria-hidden="true">'+esc(ch.toUpperCase())+'</span>';}
+function avatar(m,size){
+  var ch=Array.from(nm(m))[0]||'?',src=m&&m.avatar_hash?S.avatars.get(m.avatar_hash):'';
+  return '<span class="av c'+ci(m)+' '+(size||'')+'" aria-hidden="true">'+(okPhoto(src)?'<img src="'+src+'" alt="">':esc(ch.toUpperCase()))+'</span>';
+}
+function avRowHTML(){
+  return '<div class="field"><span class="lbl">Your picture <span class="opt">optional</span></span><div class="photo-row"><div id="av-prev"></div><div class="photo-actions">'+
+    '<label class="btn ghost small" for="av-cam">'+ic('camera',18)+'<span>Take a selfie</span></label><input id="av-cam" class="sr-only" type="file" accept="image/*" capture="user" data-avin="1">'+
+    '<label class="btn ghost small" for="av-pick">'+ic('image',18)+'<span>Choose a photo</span></label><input id="av-pick" class="sr-only" type="file" accept="image/*" data-avin="1">'+
+    '<button type="button" id="av-rm" class="btn small linkish" data-act="rm-avatar" hidden>Remove</button></div></div></div>';
+}
+function syncAvatarUI(){
+  var el=$('#av-prev');if(!el) return;
+  var d=S.avDraft,m=S.members.get(S.uid)||null,has;
+  if(d.dirty){
+    has=!!d.data;
+    el.innerHTML=has?'<span class="av lg"><img src="'+d.data+'" alt="Your new picture"></span>':(m?'<span class="av lg c'+ci(m)+'">'+esc((Array.from(nm(m))[0]||'?').toUpperCase())+'</span>':'<span class="av lg empty">'+ic('camera',28)+'</span>');
+  }else if(m){has=!!m.avatar_hash;el.innerHTML=avatar(m,'lg');}
+  else{has=false;el.innerHTML='<span class="av lg empty">'+ic('camera',28)+'</span>';}
+  var rm=$('#av-rm');if(rm) rm.hidden=!has;
+}
+function squareShrink(file,size){
+  return new Promise(function(res,rej){
+    var url=URL.createObjectURL(file),img=new Image();
+    img.onload=function(){
+      try{
+        var w=img.naturalWidth,h=img.naturalHeight,k=Math.min(w,h);
+        var c=document.createElement('canvas');c.width=size;c.height=size;
+        var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,size,size);
+        x.drawImage(img,(w-k)/2,(h-k)/2,k,k,0,0,size,size);
+        var d=c.toDataURL('image/jpeg',0.8);URL.revokeObjectURL(url);res(d);
+      }catch(er){URL.revokeObjectURL(url);rej(er);}
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'));};
+    img.src=url;
+  });
+}
 function okPhoto(p){return typeof p==='string'&&p.length<400000&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(p);}
 function safeUrl(u){
   u=String(u||'').trim(); if(!u) return '';
@@ -177,17 +213,17 @@ function authHTML(err){
   return '<div class="onboard"><div class="gate-mark">'+ic('tag',28)+'</div><h1>'+(join?'Join the family':'Welcome back')+'</h1>'+
     '<p class="lead">'+(join?'Everyone keeps a wish list. Add your name so the family knows whose is whose. Others can tick things on your list as bought, and you never see those ticks.':'Sign in with your name and PIN.')+'</p>'+
     '<div class="segs two" role="group" aria-label="Sign in or join" style="width:100%">'+
-    '<button type="button" class="chip" style="min-height:48px;border-radius:12px" data-act="authmode" data-mode="signin" aria-pressed="'+(!join)+'">Sign in</button>'+
-    '<button type="button" class="chip" style="min-height:48px;border-radius:12px" data-act="authmode" data-mode="join" aria-pressed="'+join+'">I\'m new</button></div>'+
+    '<button type="button" class="chip" style="min-height:50px;border-radius:999px" data-act="authmode" data-mode="signin" aria-pressed="'+(!join)+'">Sign in</button>'+
+    '<button type="button" class="chip" style="min-height:50px;border-radius:999px" data-act="authmode" data-mode="join" aria-pressed="'+join+'">I\'m new</button></div>'+
     '<form id="authForm" class="form" autocomplete="off" data-mode="'+S.authMode+'">'+
     (join?'<div class="field"><label for="a-code">Family code</label><input id="a-code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" required></div>':'')+
     '<div class="field"><label for="a-name">Your name</label><input id="a-name" type="text" maxlength="30" required autocomplete="off" value="'+esc(join?'':last)+'"></div>'+
     '<div class="field"><label for="a-pin">'+(join?'Choose a PIN':'Your PIN')+'</label><input id="a-pin" type="text" class="pin" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required autocomplete="off">'+(join?'<span class="hint">At least 6 characters. Numbers are fine. Remember it, you\'ll need it on a new phone.</span>':'')+'</div>'+
-    (join?'<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('a-',0)+'</fieldset>':'')+
+    (join?avRowHTML()+'<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('a-',0)+'</fieldset>':'')+
     (err?'<div class="form-error" role="alert">'+esc(err)+'</div>':'')+
     '<button class="btn primary wide" type="submit">'+(join?'Join the family':'Sign in')+'</button></form></div>';
 }
-function showAuth(err){S.shown='auth';gate(authHTML(err));var f=$('#a-code')||$('#a-name');if(f&&!(f.value))f.focus({preventScroll:true});else{var p=$('#a-pin');if(p)p.focus({preventScroll:true});}}
+function showAuth(err){S.shown='auth';gate(authHTML(err));syncAvatarUI();var f=$('#a-code')||$('#a-name');if(f&&!(f.value))f.focus({preventScroll:true});else{var p=$('#a-pin');if(p)p.focus({preventScroll:true});}}
 
 /* ================= rendering ================= */
 function render(force){
@@ -314,7 +350,7 @@ function profileSheetHTML(){
   var others=Array.from(S.members.entries()).filter(function(e){return e[0]!==S.uid;});
   var ua=navigator.userAgent||'',ios=/iPhone|iPad|iPod/i.test(ua);
   return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(nm(me))+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
-    '<form id="profileForm" class="form" autocomplete="off">'+
+    '<form id="profileForm" class="form" autocomplete="off">'+avRowHTML()+
     '<div class="field"><label for="p-name">Your name</label><input id="p-name" type="text" maxlength="30" required value="'+esc(nm(me))+'"></div>'+
     '<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('p-',cur)+'</fieldset>'+
     '<div id="p-msg"></div><button class="btn primary wide" type="submit">Save</button></form>'+
@@ -336,7 +372,7 @@ function drawSheet(){
   var sh=$('#sheet'),m=S.sheet;
   if(m.mode==='detail'){var it=getItem(m.id);if(!it){closeSheet();return;}sh.innerHTML=detailHTML(it);var bs=$('#buy-slot');if(bs) bs.dataset.sig=buyHTML(it);}
   else if(m.mode==='edit'){var e=m.id?getItem(m.id):null;if(m.id&&(!e||e.owner!==S.uid)){closeSheet();return;}sh.innerHTML=editHTML(e);wireEdit(e);}
-  else if(m.mode==='profile'){sh.innerHTML=profileSheetHTML();loadJoinCode();}
+  else if(m.mode==='profile'){sh.innerHTML=profileSheetHTML();loadJoinCode();S.avDraft={data:'',dirty:false};syncAvatarUI();}
 }
 function openSheet(mode,id){
   S.lastFocus=document.activeElement;S.sheet={mode:mode,id:id};S.armDelete=false;
@@ -427,7 +463,7 @@ function onPhoto(e){
 /* ================= loading data ================= */
 function sigOf(){
   var parts=[S.members.size];
-  S.members.forEach(function(m,id){parts.push(id+m.name+m.color+m.is_admin);});
+  S.members.forEach(function(m,id){parts.push(id+m.name+m.color+m.is_admin+(m.avatar_hash||'')+(S.avatars.has(m.avatar_hash)?1:0));});
   S.items.forEach(function(i){parts.push(i.id+'|'+i.title+'|'+i.link+'|'+i.occasion+'|'+i.note+'|'+i.price+'|'+i.photo_hash+'|'+(S.photos.has(i.photo_hash)?1:0));});
   S.claims.forEach(function(c,id){parts.push(id+c.buyer);});
   parts.push(S.online);
@@ -438,7 +474,10 @@ function loadAll(){
   S.loading=true;
   return Promise.all([
     rpc('current_member'),
-    rest('GET','members?select=id,name,color,is_admin&order=name.asc'),
+    rest('GET','members?select=id,name,color,is_admin,avatar_hash&order=name.asc').catch(function(e){
+      if(e&&e.status===400) return rest('GET','members?select=id,name,color,is_admin&order=name.asc');
+      throw e;
+    }),
     rest('GET','items?select=id,owner,title,link,occasion,note,price,photo_hash,created_at&order=created_at.desc'),
     rest('GET','claims?select=item_id,buyer')
   ]).then(function(r){
@@ -452,7 +491,7 @@ function loadAll(){
     var wasOnline=S.online;S.online=true;
     var s=sigOf();
     if(s!==S.sig||!wasOnline||S.shown!=='main'){S.sig=s;render();}
-    loadPhotos();
+    loadPhotos();loadAvatars();
   }).catch(function(e){
     S.loading=false;
     if(window.console&&!(e&&e.network)) console.error('loadAll failed',e&&e.stack||e);
@@ -473,6 +512,17 @@ function fetchPhotos(ids){
   return rest('GET','items?select=id,photo,photo_hash&id=in.('+ids.map(encodeURIComponent).join(',')+')').then(function(rows){
     rows.forEach(function(r){if(r.photo_hash&&okPhoto(r.photo)) S.photos.set(r.photo_hash,r.photo);});
   });
+}
+function loadAvatars(){
+  if(S.avBusy) return;
+  var need=[];
+  S.members.forEach(function(m,id){if(m.avatar_hash&&!S.avatars.has(m.avatar_hash)) need.push(id);});
+  if(!need.length) return;
+  S.avBusy=true;
+  rest('GET','members?select=id,avatar,avatar_hash&id=in.('+need.map(encodeURIComponent).join(',')+')').then(function(rows){
+    rows.forEach(function(r){if(r.avatar_hash&&okPhoto(r.avatar)) S.avatars.set(r.avatar_hash,r.avatar);});
+    S.sig=sigOf();if(S.shown==='main') render();
+  }).catch(function(){}).then(function(){S.avBusy=false;});
 }
 function loadPhotos(){
   if(S.photoBusy) return;
@@ -498,7 +548,7 @@ function enter(){
   }).catch(function(e){S.shown='error';gateMsg('Lists unavailable',friendlyErr(e),'<button class="btn primary" data-act="reload">Try again</button>');});
 }
 function leaveToAuth(msg){
-  S.uid=null;S.tab='mine';S.viewing=null;S.filter='all';S.members=new Map();S.items=[];S.itemMap=new Map();S.claims=new Map();S.sig='';
+  S.avDraft={data:'',dirty:false};S.uid=null;S.tab='mine';S.viewing=null;S.filter='all';S.members=new Map();S.items=[];S.itemMap=new Map();S.claims=new Map();S.sig='';
   if(S.sheet) closeSheet();
   showAuth(msg||'');
 }
@@ -513,7 +563,11 @@ function submitAuth(form){
     p=rpc('join_family',{p_code:$('#a-code').value.trim(),p_name:name,p_pin:pin,p_color:cEl?cEl.value:PALETTE[0]});
   }else p=rpc('sign_in',{p_name:name,p_pin:pin});
   p.then(function(r){
-    if(r&&r.ok){lsSet(NAME_KEY,name);return enter();}
+    if(r&&r.ok){
+      lsSet(NAME_KEY,name);
+      var av=(join&&S.avDraft.dirty&&S.avDraft.data)?rpc('set_avatar',{p_avatar:S.avDraft.data}).catch(function(){}):Promise.resolve();
+      return av.then(function(){S.avDraft={data:'',dirty:false};return enter();});
+    }
     var code=join?$('#a-code').value:'';
     showAuth(authMsg(r&&r.error));
     var n=$('#a-name');if(n) n.value=name;var c=$('#a-code');if(c) c.value=code;
@@ -562,9 +616,14 @@ function saveProfile(form){
   var cEl=form.querySelector('input[name="p--color"]:checked'),color=cEl?cEl.value:PALETTE[0];
   var btn=form.querySelector('button[type=submit]');btn.disabled=true;
   rpc('update_profile',{p_name:name,p_color:color}).then(function(r){
-    btn.disabled=false;
-    if(r&&r.ok){lsSet(NAME_KEY,name);closeSheet();toast('Saved');S.sig='';return loadAll();}
-    msgBox('#p-msg','form-error',authMsg(r&&r.error));
+    if(!(r&&r.ok)){btn.disabled=false;msgBox('#p-msg','form-error',authMsg(r&&r.error));return;}
+    lsSet(NAME_KEY,name);
+    var av=S.avDraft.dirty?rpc('set_avatar',{p_avatar:S.avDraft.data}):Promise.resolve({ok:true});
+    return av.then(function(a){
+      btn.disabled=false;
+      if(a&&a.ok){closeSheet();toast('Saved');S.sig='';return loadAll();}
+      msgBox('#p-msg','form-error',"Your name saved, but the picture didn't. Try a different photo.");
+    });
   }).catch(function(){btn.disabled=false;msgBox('#p-msg','form-error',"That didn't save. Check your connection.");});
 }
 function savePin(form){
@@ -629,7 +688,8 @@ document.addEventListener('click',function(e){
   else if(a==='unbought') setBought(id,false);
   else if(a==='rm-photo'){S.draft.photo='';S.draft.dirty=true;S.draft.hasServerPhoto=false;syncPhotoUI();}
   else if(a==='delete') delItem();
-  else if(a==='authmode'){S.authMode=el.dataset.mode;showAuth('');}
+  else if(a==='authmode'){S.authMode=el.dataset.mode;S.avDraft={data:'',dirty:false};showAuth('');}
+  else if(a==='rm-avatar'){S.avDraft={data:'',dirty:true};syncAvatarUI();}
   else if(a==='signout') signOut();
   else if(a==='reload') location.reload();
   else if(a==='copy-code'){if(S.joinCode) copyText(S.joinCode,'Code copied');}
@@ -638,6 +698,14 @@ document.addEventListener('click',function(e){
     if(navigator.share) navigator.share({title:'I Want This',text:t}).catch(function(){});
     else copyText(t,'Invite copied. Paste it into a message.');
   }
+});
+document.addEventListener('change',function(e){
+  var t=e.target;
+  if(!(t&&t.matches&&t.matches('input[data-avin]'))) return;
+  var f=t.files&&t.files[0];if(!f) return;
+  squareShrink(f,192).then(function(d){S.avDraft={data:d,dirty:true};syncAvatarUI();})
+    .catch(function(){toast("That photo couldn't be read. Try another one.");});
+  t.value='';
 });
 document.addEventListener('submit',function(e){
   e.preventDefault();var f=e.target;
