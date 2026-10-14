@@ -29,6 +29,7 @@ var P={
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
   cake:'<path d="M4 20h16M5 20v-6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6"/><path d="M5 16c2 1.5 3.5 1.5 5 0s3.5-1.5 5 0 2.5 1.2 4 0M12 12V8M12 5.5v.01"/>',
   star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>',
   link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'
 };
 function ic(n,s){s=s||20;return '<svg class="ic" width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+P[n]+'</svg>';}
@@ -39,7 +40,7 @@ function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
 
 var S={
   uid:null,members:new Map(),items:[],itemMap:new Map(),claims:new Map(),photos:new Map(),avatars:new Map(),santa:[],
-  v2:false,
+  v2:false,v3:false,rem:null,armClear:false,
   tab:'mine',viewing:null,filter:'all',showReceived:false,
   sheet:null,draft:null,shown:'',lastFocus:null,armDelete:false,armBulk:false,
   avDraft:{data:'',dirty:false},avTarget:null,
@@ -48,6 +49,25 @@ var S={
 };
 
 /* ================= helpers ================= */
+var PREF_KEY='iwt.prefs.v1';
+function readPrefs(){
+  var p={};try{p=JSON.parse(lsGet(PREF_KEY)||'{}')||{};}catch(e){}
+  return {theme:['auto','light','dark'].indexOf(p.theme)>=0?p.theme:'auto',accent:(p.accent>=0&&p.accent<6)?(p.accent|0):0,
+    size:['n','l','xl'].indexOf(p.size)>=0?p.size:'n',layout:p.layout==='grid'?'grid':'list',dense:!!p.dense,hidePrices:!!p.hidePrices};
+}
+var PREF=readPrefs();
+function applyPrefs(){
+  var de=document.documentElement,mq=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');
+  var dark=PREF.theme==='dark'||(PREF.theme==='auto'&&!!(mq&&mq.matches));
+  de.dataset.mode=dark?'dark':'light';de.dataset.accent=String(PREF.accent);de.dataset.size=PREF.size;
+  var b=document.body;if(!b) return;
+  b.classList.toggle('grid',PREF.layout==='grid');b.classList.toggle('dense',PREF.dense);b.classList.toggle('noprice',PREF.hidePrices);
+  try{var tc=document.querySelectorAll('meta[name=theme-color]');for(var i=0;i<tc.length;i++) tc[i].setAttribute('content',dark?'#1E1719':'#FFF8F2');}catch(e){}
+}
+function setPref(k,v){PREF[k]=v;lsSet(PREF_KEY,JSON.stringify(PREF));applyPrefs();}
+try{var _mq=window.matchMedia('(prefers-color-scheme: dark)');if(_mq.addEventListener) _mq.addEventListener('change',applyPrefs);}catch(e){}
+applyPrefs();
+
 function nm(m){return String((m&&m.name)||'Someone').slice(0,30);}
 function ci(m){var i=PALETTE.indexOf(m&&m.color);return i<0?0:i;}
 function okPhoto(p){return typeof p==='string'&&p.length<400000&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(p);}
@@ -79,6 +99,9 @@ function hasPrice(i){return typeof i.price==='number'&&isFinite(i.price)&&i.pric
 function occKey(i){return OCC.some(function(o){return o[0]===i.occasion;})?i.occasion:'anytime';}
 function occLabel(k){return (OCC.filter(function(o){return o[0]===k;})[0]||OCC[0])[1];}
 function byNewest(a,b){return (b.createdAt||0)-(a.createdAt||0);}
+function byPick(a,b){return (b.priority||0)-(a.priority||0)||byNewest(a,b);}
+function priceDrop(i){return (S.v3&&i.owner!==S.uid&&!i.received_at&&typeof i.price_base==='number'&&typeof i.price_seen==='number'&&i.price_seen<=i.price_base*0.95)?i.price_seen:null;}
+function hostOf(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return '';}}
 function getItem(id){return S.itemMap.get(id);}
 function photoOf(i){return i&&i.photo_hash?(S.photos.get(i.photo_hash)||''):'';}
 function plural(n,w){return n+' '+(n===1?w:(w==='person'?'people':w+'s'));}
@@ -283,21 +306,32 @@ function buyingCount(){
 }
 function paintChrome(me){
   $('.brand').innerHTML=ic('tag',22)+'<span>I want <em>this</em></span>';
-  $('#me-slot').innerHTML='<button class="me" data-act="profile" aria-label="Your profile">'+avatar(me,'sm')+'</button>';
+  $('#me-slot').innerHTML='<button class="me" data-act="tab" data-tab="me" aria-label="Me and settings">'+avatar(me,'sm')+'</button>';
   $('#tab-mine').innerHTML=ic('list',22)+'<span>My list</span>';
   $('#tab-family').innerHTML=ic('family',22)+'<span>Family</span>';
   var n=buyingCount();
   $('#tab-buying').innerHTML=ic('bag',22)+'<span>Buying'+(n?' ('+n+')':'')+'</span>';
+  $('#tab-me').innerHTML=ic('user',22)+'<span>Me</span>';
 }
 function paintMain(){
-  ['mine','family','buying'].forEach(function(t){$('#tab-'+t).setAttribute('aria-current',S.tab===t?'page':'false');});
+  ['mine','family','buying','me'].forEach(function(t){$('#tab-'+t).setAttribute('aria-current',S.tab===t?'page':'false');});
+  var keep=null,focusId=null;
+  if(S.tab==='me'){
+    keep={};focusId=document.activeElement&&document.activeElement.id;
+    document.querySelectorAll('#app input[id],#app select[id],#app textarea[id]').forEach(function(el){keep[el.id]=el.type==='checkbox'?el.checked:el.value;});
+  }
   var h='';
   if(!S.online) h+='<p class="banner offline" role="status">You\'re offline. What you see may be out of date. Changes won\'t save until you\'re back online.</p>';
   if(S.tab==='mine') h+=mineHTML();
   else if(S.tab==='buying') h+=buyingHTML();
+  else if(S.tab==='me') h+=meHTML();
   else if(S.viewing&&S.viewing!==S.uid&&S.members.has(S.viewing)) h+=personHTML(S.viewing);
   else {S.viewing=null;h+=familyHTML();}
   $('#app').innerHTML=h;
+  if(keep){
+    Object.keys(keep).forEach(function(id){var el=document.getElementById(id);if(el&&el.closest('#app')){if(el.type==='checkbox') el.checked=keep[id];else if(keep[id]!=='') el.value=keep[id];}});
+    if(focusId){var f=document.getElementById(focusId);if(f&&f.focus) f.focus({preventScroll:true});}
+  }
 }
 function effFilter(list){
   if(S.filter==='all') return 'all';
@@ -330,27 +364,30 @@ function statusHTML(i){
 function cardHTML(i,showStatus){
   var got=!!i.received_at;
   return '<li class="card'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(i.id)+'">'+thumbHTML(i)+
-    '<div style="min-width:0"><div class="card-title">'+esc(i.title)+'</div><div class="card-meta">'+tagHTML(i)+(hasPrice(i)?'<span class="price">about '+fmtPrice(i.price)+'</span>':'')+(safeUrl(i.link)?ic('link',15):'')+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</div></div>'+
+    '<div style="min-width:0"><div class="card-title">'+esc(i.title)+'</div><div class="card-meta">'+tagHTML(i)+(hasPrice(i)?'<span class="price">about '+fmtPrice(i.price)+'</span>':'')+(i.priority?'<span class="pickbadge">'+ic('star',13)+' Top pick</span>':'')+(priceDrop(i)!=null?'<span class="dropbadge">Now '+fmtPrice(priceDrop(i))+'</span>':'')+(safeUrl(i.link)?ic('link',15):'')+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</div></div>'+
     '<span class="chev">'+ic('chevron',20)+'</span></button>'+
     (showStatus&&!got?'<div class="card-foot">'+statusHTML(i)+'</div>':'')+'</li>';
 }
 function receivedSection(list,showStatus){
   var got=list.filter(function(i){return !!i.received_at;});
   if(!got.length) return '';
+  var owner=got[0].owner;
   return '<button class="chip rec-toggle" data-act="toggle-received" aria-pressed="'+S.showReceived+'">Received ('+got.length+')</button>'+
-    (S.showReceived?'<ul class="items rec-list">'+got.map(function(i){return cardHTML(i,false);}).join('')+'</ul>':'');
+    (S.showReceived?'<ul class="items rec-list">'+got.map(function(i){return cardHTML(i,false);}).join('')+'</ul>'+
+      '<button class="btn linkish small" data-act="clear-received" data-owner="'+esc(owner)+'">'+(S.armClear===owner?'Tap again to clear them out':'Clear these out for good')+'</button>':'');
 }
 
 function mineHTML(){
-  var all=S.items.filter(function(i){return i.owner===S.uid;}).sort(byNewest);
+  var all=S.items.filter(function(i){return i.owner===S.uid;}).sort(byPick);
   var list=all.filter(function(i){return !i.received_at;});
   var shown=applyFilter(list),f=effFilter(list);
+  var nudge=(list.length>0&&list.length<3)?'<div class="nudge"><div><strong>Your list is a bit quiet.</strong> A few more ideas, big and small, means the family always has something to pick from.</div></div>':'';
   var body;
   if(!list.length) body='<div class="empty"><h2>Nothing on your list yet</h2><p>See something you like? Add its name, a link or a photo. Your family will see it and can pick it up for Christmas or your birthday.</p></div>';
   else body='<ul class="items">'+shown.map(function(i){return cardHTML(i,false);}).join('')+'</ul>';
   var bulk=(S.v2&&f!=='all'&&shown.length)?'<button class="btn ghost small bulk" data-act="bulk-received">'+(S.armBulk?'Tap again to confirm':'Mark all '+esc(occLabel(f))+' items as received')+'</button>':'';
   return '<div class="page-head"><h1>Your list</h1><p class="sub">'+(list.length?plural(list.length,'thing')+'. ':'')+"The family can see this list. You won't see who has bought what.</p></div>"+
-    '<button class="add" data-act="add" data-owner="'+esc(S.uid)+'">'+ic('plus',20)+' Add something you want</button>'+filterBar(list)+bulk+body+(S.v2?receivedSection(all,false):'');
+    '<button class="add" data-act="add" data-owner="'+esc(S.uid)+'">'+ic('plus',20)+' Add something you want</button>'+nudge+filterBar(list)+bulk+body+(S.v2?receivedSection(all,false):'');
 }
 
 /* ---- family ---- */
@@ -403,7 +440,7 @@ function familyHTML(){
 }
 function personHTML(uid){
   var m=S.members.get(uid),manage=canManage(uid);
-  var all=S.items.filter(function(i){return i.owner===uid;}).sort(byNewest);
+  var all=S.items.filter(function(i){return i.owner===uid;}).sort(byPick);
   var list=all.filter(function(i){return !i.received_at;});
   var open=list.filter(function(i){return !isTaken(i.id);}).length;
   var shown=applyFilter(list);
@@ -411,7 +448,7 @@ function personHTML(uid){
   var kidBar=manage?'<button class="add" data-act="add" data-owner="'+esc(uid)+'">'+ic('plus',20)+' Add to '+esc(nm(m))+'’s list</button>'+
     '<p class="fine kidnote">You manage this list. You can see what others have bought for '+esc(nm(m))+', so you can plan. '+esc(nm(m))+' can\'t sign in.</p>':'';
   return '<button class="back" data-act="back">'+ic('back',18)+' Family</button>'+
-    '<div class="person-head">'+avatar(m,'lg')+'<div><h1>'+esc(nm(m))+'’s list</h1><p class="sub">'+(list.length?plural(list.length,'thing')+', '+open+' still to buy':'Nothing on it yet')+'</p>'+
+    '<div class="person-head">'+avatar(m,'lg')+'<div><h1>'+esc(nm(m))+'’s list</h1><p class="sub">'+(list.length?plural(list.length,'thing')+', '+open+' still to buy':'Nothing on it yet')+'</p>'+(m.bio?'<p class="bio">“'+esc(m.bio)+'”</p>':'')+
     (manage&&isKid(m)?'<button class="btn small ghost editkid" data-act="child-edit" data-id="'+esc(uid)+'">Edit '+esc(nm(m))+'</button>':'')+'</div></div>'+
     kidBar+filterBar(list)+body+(manage&&S.v2?receivedSection(all,true):'');
 }
@@ -450,6 +487,12 @@ function buyingHTML(){
 }
 
 /* ================= sheets ================= */
+function linkCardHTML(link,photo,site,title,desc){
+  var u=safeUrl(link);if(!u) return '';
+  return '<a class="linkcard" href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+(okPhoto(photo)?'<img src="'+photo+'" alt="">':'')+
+    '<div class="lc-t"><div class="lc-site">'+esc(site||hostOf(u))+'</div><div class="lc-title">'+esc(title||hostOf(u))+'</div>'+(desc?'<div class="lc-desc">'+esc(desc)+'</div>':'')+
+    '<div class="lc-open">Open page '+ic('external',14)+'</div></div></a>';
+}
 function detailHTML(it){
   var own=it.owner===S.uid,manage=canManage(it.owner),owner=S.members.get(it.owner),L=searchLinks(it.title),saved=safeUrl(it.link),ph=photoOf(it);
   function ext(u){return 'href="'+esc(u)+'" target="_blank" rel="noopener noreferrer"';}
@@ -460,14 +503,15 @@ function detailHTML(it){
       (S.v2?'<button class="btn ghost wide" data-act="'+(got?'unreceived':'received')+'" data-id="'+esc(it.id)+'">'+(got?'Put it back on the list':(own?'I\'ve got this':esc(nm(owner))+' has got this'))+'</button>':'')+'</div>';
   }
   return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(it.title)+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
-    (okPhoto(ph)?'<img class="hero" src="'+ph+'" alt="">':'')+
-    '<div class="meta">'+tagHTML(it)+(hasPrice(it)?'<span class="price">about '+fmtPrice(it.price)+'</span>':'')+'<span>'+(own?'On your list':'On '+esc(nm(owner))+'’s list')+'</span>'+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</div>'+
+    (okPhoto(ph)&&!safeUrl(it.link)?'<img class="hero" src="'+ph+'" alt="">':'')+
+    '<div class="meta">'+(it.priority?'<span class="pickbadge">'+ic('star',13)+' Top pick</span>':'')+tagHTML(it)+(hasPrice(it)?'<span class="price">about '+fmtPrice(it.price)+'</span>':'')+'<span>'+(own?'On your list':'On '+esc(nm(owner))+'’s list')+'</span>'+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</div>'+
     (it.note?'<p class="note">'+esc(it.note)+'</p>':'')+
+    (priceDrop(it)!=null?'<p class="dropnote">'+ic('check',16)+' Price drop: now about '+fmtPrice(priceDrop(it))+(typeof it.price_base==='number'?' (was '+fmtPrice(it.price_base)+')':'')+'</p>':'')+
+    linkCardHTML(it.link,ph,it.link_site,it.link_title||it.title,it.link_desc)+
     '<h3 class="sec">Find the best price</h3>'+
     '<a class="btn primary wide" '+ext(L.primary.href)+'>Compare prices, lowest first '+ic('external',18)+'</a>'+
     '<div class="link-grid">'+L.compare.map(function(c){return '<a class="btn ghost small" '+ext(c.href)+'>'+esc(c.name)+' '+ic('external',16)+'</a>';}).join('')+'</div>'+
     '<p class="sec-sub">Or go straight to a shop</p><div class="chips">'+L.shops.map(function(s){return '<a class="shop" '+ext(s.href)+'>'+esc(s.name)+'</a>';}).join('')+'</div>'+
-    (saved?'<a class="link-row" '+ext(saved)+'>'+ic('link',18)+'<span>Open the saved link</span>'+ic('external',16)+'</a>':'')+
     '<p class="fine">Each button opens that site’s own results for “'+esc(it.title)+'”, so the prices are always current.</p>'+
     manageBar+(own?'':'<div class="buy" id="buy-slot">'+buyHTML(it)+'</div>');
 }
@@ -502,39 +546,98 @@ function editHTML(it,ownerId){
   return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+(it?'Edit item':'Add to '+esc(who))+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
   '<form id="itemForm" class="form" autocomplete="off" data-id="'+(it?esc(it.id):'')+'" data-owner="'+esc(oid)+'">'+
   '<div class="field"><label for="f-link">Link <span class="opt">optional</span></label><div class="linkrow"><input id="f-link" type="text" inputmode="url" autocapitalize="none" placeholder="Paste a link from any shop" value="'+esc(it&&it.link)+'">'+
-    '<button type="button" class="btn ghost small" data-act="paste-link">Paste</button><button type="button" class="btn ghost small" data-act="fill-link">Fill in</button></div><span id="f-linkstat" class="hint" aria-live="polite"></span></div>'+
+    '<button type="button" class="btn ghost small" data-act="paste-link">Paste</button><button type="button" class="btn ghost small" data-act="fill-link">Fill in</button></div><span id="f-linkstat" class="hint" aria-live="polite"></span><div id="f-linkcard"></div></div>'+
   '<div class="field"><label for="f-title">What do you want?</label><input id="f-title" type="text" maxlength="120" required placeholder="Brand, model, colour" value="'+esc(it&&it.title)+'"></div>'+
   '<div class="field"><span class="lbl">Photo <span class="opt">optional</span></span><div class="photo-row"><div id="f-prev" class="prev"></div><div class="photo-actions">'+
     '<label class="btn ghost small" for="f-photo">'+ic('camera',18)+'<span id="f-photo-lbl">Add a photo</span></label><input id="f-photo" class="sr-only" type="file" accept="image/*">'+
     '<button type="button" id="f-rm" class="btn small linkish" data-act="rm-photo" hidden>Remove</button></div></div></div>'+
   '<fieldset class="field"><legend>For</legend><div class="segs">'+OCC.map(function(o){return '<input class="sr-only" type="radio" name="f-occ" id="o-'+o[0]+'" value="'+o[0]+'"'+(o[0]===occ?' checked':'')+'><label class="seg" for="o-'+o[0]+'">'+o[1]+'</label>';}).join('')+'</div></fieldset>'+
+  (S.v3?'<label class="check"><input type="checkbox" id="f-pick"'+(it&&it.priority?' checked':'')+'><span><strong>'+ic('star',16)+' Top pick</strong><small>The one you would love most. It goes to the top of your list.</small></span></label>':'')+
   '<div class="field"><label for="f-note">Details <span class="opt">optional</span></label><textarea id="f-note" rows="2" maxlength="240" placeholder="Size, colour, which version">'+esc(it&&it.note)+'</textarea></div>'+
   '<div class="field"><label for="f-price">Roughly how much? <span class="opt">optional</span></label><div class="money"><span aria-hidden="true">£</span><input id="f-price" type="text" inputmode="decimal" placeholder="0" value="'+(it&&hasPrice(it)?esc(String(it.price)):'')+'"></div></div>'+
   '<div class="form-actions"><button class="btn primary grow" type="submit">'+(it?'Save changes':'Add to the list')+'</button>'+(it?'<button class="btn danger" type="button" id="f-del" data-act="delete">Delete</button>':'')+'</div></form>';
 }
 function profileSheetHTML(){
-  var me=S.members.get(S.uid),isAdmin=!!(me&&me.is_admin),cur=ci(me);
-  var others=Array.from(S.members.entries()).filter(function(e){return e[0]!==S.uid&&!isKid(e[1]);});
-  var ua=navigator.userAgent||'',ios=/iPhone|iPad|iPod/i.test(ua);
-  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(nm(me))+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
+  var me=S.members.get(S.uid),cur=ci(me);
+  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">Edit profile</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
     '<form id="profileForm" class="form" autocomplete="off">'+avRowHTML()+
     '<div class="field"><label for="p-name">Your name</label><input id="p-name" type="text" maxlength="30" required value="'+esc(nm(me))+'"></div>'+
+    (S.v3?'<div class="field"><label for="p-bio">About me <span class="opt">optional, shown at the top of your list</span></label><textarea id="p-bio" rows="2" maxlength="140" placeholder="Sizes, favourite colours, things to avoid">'+esc(me.bio||'')+'</textarea></div>':'')+
     (S.v2?'<div class="field"><span class="lbl">Your birthday <span class="opt">optional, no year</span></span>'+bdaySelects('p-b',me.birth_month||null,me.birth_day||null)+'</div>':'')+
     '<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('p-',cur)+'</fieldset>'+
-    '<div id="p-msg"></div><button class="btn primary wide" type="submit">Save</button></form>'+
-    '<form id="pinForm" class="box" autocomplete="off"><h3>Change your PIN</h3>'+
-    '<div class="field"><label for="n-pin">New PIN</label>'+pinInput('n-pin')+'<span class="hint">At least 6 characters.</span></div>'+
-    '<div id="n-msg"></div><button class="btn ghost" type="submit">Change PIN</button></form>'+
-    (isAdmin?
-      '<div class="box"><h3>Invite family</h3><p class="hint">Send them the app link and this family code. They tap “I\'m new” and choose their own name and PIN.</p>'+
-      '<div class="codebox"><code id="join-code">…</code><button class="btn small ghost" type="button" data-act="copy-code">Copy</button></div>'+
-      '<button class="btn primary" type="button" data-act="invite">Share an invite</button></div>'+
-      (others.length?'<form id="resetForm" class="box" autocomplete="off"><h3>Someone forgot their PIN?</h3>'+
-        '<div class="field"><label for="r-who">Who</label><select id="r-who">'+others.map(function(e){return '<option value="'+esc(e[0])+'">'+esc(nm(e[1]))+'</option>';}).join('')+'</select></div>'+
-        '<div class="field"><label for="r-pin">Give them a new PIN</label>'+pinInput('r-pin')+'</div>'+
-        '<div id="r-msg"></div><button class="btn ghost" type="submit">Set new PIN</button></form>':''):'')+
-    '<div class="tip"><strong>Put it on your home screen.</strong> '+(ios?'In Safari, tap the Share button, then “Add to Home Screen”.':'In Chrome or Samsung Internet, open the ⋮ menu and choose “Add to Home screen” or “Install app”.')+'</div>'+
-    '<div class="box"><button class="btn danger wide" type="button" data-act="signout">Sign out on this phone</button></div>';
+    '<div id="p-msg"></div><button class="btn primary wide" type="submit">Save</button></form>';
+}
+
+/* ================= the Me tab ================= */
+function blk(title,sub,inner){return '<section class="blk"><h2>'+title+'</h2>'+(sub?'<p class="sub">'+sub+'</p>':'')+inner+'</section>';}
+function optRow(k,cur,opts){
+  return '<div class="opts" role="group">'+opts.map(function(o){return '<button type="button" class="chip" data-act="pref" data-k="'+k+'" data-v="'+o[0]+'" aria-pressed="'+(String(cur)===String(o[0]))+'">'+o[1]+'</button>';}).join('')+'</div>';
+}
+function switchRow(label,hint,act,key,on){
+  return '<div class="trow"><div><div class="tl">'+label+'</div>'+(hint?'<div class="th">'+hint+'</div>':'')+'</div>'+
+    '<button type="button" class="switch" role="switch" aria-checked="'+(!!on)+'" aria-label="'+esc(label)+'" data-act="'+act+'" data-k="'+key+'"><span></span></button></div>';
+}
+function pushSupport(){
+  var ua=navigator.userAgent||'',ios=/iPhone|iPad|iPod/i.test(ua),standalone=(window.navigator.standalone===true)||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+  if(!CFG.VAPID_PUBLIC_KEY) return {ok:false,why:'Reminders are not set up yet.'};
+  if(ios&&!standalone) return {ok:false,why:'On iPhone, add the app to your Home Screen first (Share, then Add to Home Screen), then open it from there to turn reminders on.'};
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)) return {ok:false,why:"This browser can't show reminders. Installing the app from Chrome usually fixes that."};
+  return {ok:true};
+}
+function remindersHTML(){
+  var sup=pushSupport(),r=S.rem;
+  if(!sup.ok) return blk('Reminders',sup.why,'');
+  if(!r) return blk('Reminders','Loading…','');
+  var denied=window.Notification&&Notification.permission==='denied';
+  var on=r.thisDevice;
+  var top=denied?'<p class="form-error">Notifications are blocked for this app. Allow them in your phone settings, then come back.</p>':
+    on?'<div class="form-ok">Reminders are on for this phone.</div><div class="btnrow"><button class="btn ghost small" data-act="push-test">Send me a test</button><button class="btn linkish small" data-act="push-off">Turn off on this phone</button></div>'
+      :'<button class="btn primary wide" data-act="push-on">Turn on reminders on this phone</button>';
+  var p=r.prefs||{};
+  return blk('Reminders','A nudge when it matters. You choose which ones.',top+
+    '<div class="trows">'+switchRow('Birthdays','A week before, the day before and on the day','rem','birthdays',p.birthdays!==false)+
+    switchRow('Christmas','A month, a week and a day before','rem','christmas',p.christmas!==false)+
+    switchRow('Price drops','When something on someone\'s list gets cheaper','rem','prices',p.prices!==false)+
+    switchRow('A nudge for my list','On Sundays, if my list is a bit quiet','rem','nudges',p.nudges!==false)+'</div>');
+}
+function meHTML(){
+  var me=S.members.get(S.uid);if(!me) return '';
+  var isAdmin=!!me.is_admin,kids=Array.from(S.members.entries()).filter(function(e){return e[1].managed_by===S.uid;});
+  var others=Array.from(S.members.entries()).filter(function(e){return e[0]!==S.uid&&!isKid(e[1]);});
+  var bday=me.birth_month&&me.birth_day?me.birth_day+' '+MONTHS[me.birth_month-1]:'';
+  var h='<div class="page-head"><h1>Me</h1></div>'+
+    '<section class="me-card">'+avatar(me,'lg')+'<div class="mc-t"><div class="mc-n">'+esc(nm(me))+'</div>'+(bday?'<div class="sub">Birthday '+esc(bday)+'</div>':'')+(me.bio?'<div class="bio">“'+esc(me.bio)+'”</div>':'')+'</div>'+
+    '<button class="btn ghost small" data-act="profile">Edit profile</button></section>';
+  h+=blk('Make it yours','These only change how the app looks on this phone.',
+    '<div class="lbl2">Light or dark</div>'+optRow('theme',PREF.theme,[['auto','Match my phone'],['light','Light'],['dark','Dark']])+
+    '<div class="lbl2">Colour</div><div class="accents" role="group">'+PALETTE.map(function(c,i){return '<button type="button" class="acc" data-act="pref" data-k="accent" data-v="'+i+'" style="--c:'+c+'" aria-label="'+COLOUR_NAMES[i]+'" aria-pressed="'+(PREF.accent===i)+'"></button>';}).join('')+'</div>'+
+    '<div class="lbl2">Text size</div>'+optRow('size',PREF.size,[['n','Normal'],['l','Large'],['xl','Extra large']])+
+    '<div class="lbl2">Lists look like</div>'+optRow('layout',PREF.layout,[['list','A list'],['grid','Photos']])+
+    '<div class="trows">'+switchRow('Compact','Smaller cards, more on screen','prefsw','dense',PREF.dense)+switchRow('Hide prices','Keep the lists simple','prefsw','hidePrices',PREF.hidePrices)+'</div>');
+  if(S.v3) h+=remindersHTML();
+  var fam='';
+  if(isAdmin) fam+='<div class="subblk"><h3>Invite family</h3><p class="hint">Send them the link. The family code is filled in for them.</p><div class="codebox"><code id="join-code">'+esc(S.joinCode||'…')+'</code><button class="btn small ghost" type="button" data-act="copy-code">Copy</button></div><button class="btn primary" type="button" data-act="invite">Share an invite</button></div>';
+  if(S.v2){
+    fam+='<div class="subblk"><h3>Children and others without a phone</h3>'+(kids.length?'<ul class="mini">'+kids.map(function(e){return '<li><button class="person mini-p" data-act="person" data-uid="'+esc(e[0])+'">'+avatar(e[1],'sm')+'<span>'+esc(nm(e[1]))+'</span></button><button class="btn small ghost" data-act="child-edit" data-id="'+esc(e[0])+'">Edit</button></li>';}).join('')+'</ul>':'<p class="hint">You look after their list. They can\'t sign in.</p>')+
+      '<button class="btn ghost" data-act="child-add">'+ic('plus',18)+' Add a child</button></div>';
+    fam+='<div class="subblk"><h3>Secret Santa</h3><p class="hint">Draw names. Nobody, not even the organiser, sees who has who.</p><button class="btn ghost" data-act="santa">Open Secret Santa</button></div>';
+  }
+  h+=blk('My family','',fam);
+  if(S.v2){
+    var ids=[S.uid].concat(kids.map(function(e){return e[0];}));
+    var n=S.items.filter(function(i){return i.received_at&&ids.indexOf(i.owner)>=0;}).length;
+    h+=blk('Tidy up','After Christmas or a birthday, clear out what has been received so the lists stay fresh.',
+      n?'<button class="btn ghost" data-act="clear-received" data-owner="mine">'+(S.armClear==='mine'?'Tap again to clear '+plural(n,'gift'):'Clear out '+plural(n,'received gift'))+'</button>':'<p class="hint">Nothing received yet, so nothing to clear.</p>');
+  }
+  if(isAdmin&&others.length) h+=blk('Family admin','',
+    '<form id="resetForm" class="form" autocomplete="off"><h3>Someone forgot their PIN?</h3><div class="field"><label for="r-who">Who</label><select id="r-who">'+others.map(function(e){return '<option value="'+esc(e[0])+'">'+esc(nm(e[1]))+'</option>';}).join('')+'</select></div>'+
+    '<div class="field"><label for="r-pin">Give them a new PIN</label>'+pinInput('r-pin')+'</div><div id="r-msg"></div><button class="btn ghost" type="submit">Set new PIN</button></form>');
+  var ua=navigator.userAgent||'',ios=/iPhone|iPad|iPod/i.test(ua);
+  h+=blk('Account','',
+    '<form id="pinForm" class="form" autocomplete="off"><h3>Change your PIN</h3><div class="field"><label for="n-pin">New PIN</label>'+pinInput('n-pin')+'<span class="hint">At least 6 characters.</span></div><div id="n-msg"></div><button class="btn ghost" type="submit">Change PIN</button></form>'+
+    '<div class="tip"><strong>Put it on your home screen.</strong> '+(ios?'In Safari, tap the Share button, then “Add to Home Screen”.':'In Chrome or Samsung Internet, open the ⋮ menu and choose “Install app”.')+'</div>'+
+    '<button class="btn danger wide" type="button" data-act="signout">Sign out on this phone</button>');
+  return h;
 }
 function childSheetHTML(kidId){
   var m=kidId?S.members.get(kidId):null,cur=m?ci(m):0;
@@ -543,6 +646,7 @@ function childSheetHTML(kidId){
     '<form id="childForm" class="form" autocomplete="off" data-id="'+(m?esc(kidId):'')+'">'+avRowHTML('Their picture')+
     '<div class="field"><label for="k-name">Name</label><input id="k-name" type="text" maxlength="30" required value="'+esc(m?nm(m):'')+'"></div>'+
     '<div class="field"><span class="lbl">Birthday <span class="opt">optional, no year</span></span>'+bdaySelects('k-b',m&&m.birth_month||null,m&&m.birth_day||null)+'</div>'+
+    (S.v3?'<div class="field"><label for="k-bio">About them <span class="opt">optional</span></label><textarea id="k-bio" rows="2" maxlength="140" placeholder="Sizes, favourite things">'+esc(m&&m.bio||'')+'</textarea></div>':'')+
     '<fieldset class="field"><legend>Colour</legend>'+swatchesHTML('k-',cur)+'</fieldset>'+
     '<div id="k-msg"></div><div class="form-actions"><button class="btn primary grow" type="submit">'+(m?'Save':'Add')+'</button>'+(m?'<button class="btn danger" type="button" id="k-del" data-act="child-del">Delete</button>':'')+'</div></form>';
 }
@@ -632,10 +736,18 @@ function syncPhotoUI(){
   $('#f-prev').innerHTML=shown?'<img src="'+shown+'" alt="Photo preview">':ic('gift',30);
   $('#f-photo-lbl').textContent=has?'Change photo':'Add a photo';
   $('#f-rm').hidden=!has;
+  syncLinkCard();
+}
+function syncLinkCard(){
+  var box=$('#f-linkcard');if(!box||!S.draft) return;
+  var u=safeUrl($('#f-link')&&$('#f-link').value),m=S.draft.meta;
+  if(!u){box.innerHTML='';return;}
+  var ok=m&&m.url===u;
+  box.innerHTML=linkCardHTML(u,S.draft.photo,ok?m.site:'',ok&&m.title?m.title:'',ok?m.desc:'');
 }
 function wireEdit(it){
   var hash=it&&it.photo_hash;
-  S.draft={photo:it?photoOf(it):'',dirty:false,hasServerPhoto:!!hash};
+  S.draft={photo:it?photoOf(it):'',dirty:false,hasServerPhoto:!!hash,meta:(it&&safeUrl(it.link))?{url:safeUrl(it.link),title:it.link_title||'',desc:it.link_desc||'',site:it.link_site||''}:null};
   if(hash&&!S.draft.photo){
     fetchPhotos([it.id]).then(function(){
       if(S.sheet&&S.sheet.mode==='edit'&&S.draft&&!S.draft.dirty){S.draft.photo=photoOf(getItem(it.id));syncPhotoUI();}
@@ -644,6 +756,7 @@ function wireEdit(it){
   syncPhotoUI();
   $('#f-photo').addEventListener('change',onPhoto);
   $('#f-link').addEventListener('change',function(){fillFromLink(true);});
+  $('#f-link').addEventListener('input',function(){syncLinkCard();});
 }
 function shrinkTo(src,max,q){
   return new Promise(function(res,rej){
@@ -680,6 +793,7 @@ function fillFromLink(auto){
     if(!$('#itemForm')||$('#itemForm')!==form) return;
     r=r||{};
     var t=$('#f-title'),pr=$('#f-price'),done=[];
+    if(S.draft&&(r.title||r.description||r.site)){S.draft.meta={url:u,title:String(r.title||'').slice(0,200),desc:String(r.description||'').slice(0,400),site:String(r.site||'').slice(0,80)};}
     if(r.title&&!t.value.trim()){t.value=String(r.title).slice(0,120);done.push('name');}
     if(typeof r.price==='number'&&isFinite(r.price)&&r.price>=0&&!pr.value.trim()){pr.value=String(Math.round(r.price*100)/100);done.push('price');}
     var imgP=Promise.resolve();
@@ -687,9 +801,12 @@ function fillFromLink(auto){
       imgP=shrinkTo(r.image,480,0.72).then(function(d){if(S.draft&&!S.draft.photo){S.draft.photo=d;S.draft.dirty=true;syncPhotoUI();done.push('photo');}}).catch(function(){});
     }
     return imgP.then(function(){
+      syncLinkCard();
       var s2=$('#f-linkstat');if(!s2) return;
       if(!done.length){var g=guessTitle(u);if(g&&!t.value.trim()){t.value=g;done.push('name');}}
-      s2.textContent=done.length?'Filled in the '+done.join(', ')+' from the link. Check it looks right.':'Couldn\'t find details on that page. Fill them in by hand.';
+      if(S.draft&&!(S.draft.meta&&S.draft.meta.url===u)){S.draft.meta={url:u,title:'',desc:'',site:hostOf(u)};syncLinkCard();}
+      var had=!!(r.title||r.price!=null||r.image||r.description);
+      s2.textContent=done.length?'Filled in the '+done.join(', ')+' from the link. Check it looks right.':(had?'Details from the link are in. Check they look right.':'Couldn\'t find details on that page. Fill them in by hand.');
     });
   }).catch(function(e){
     var s2=$('#f-linkstat');
@@ -701,20 +818,34 @@ function fillFromLink(auto){
 
 /* ================= loading data ================= */
 function sigOf(){
-  var parts=[S.members.size,S.v2,startOfToday().getTime()];
-  S.members.forEach(function(m,id){parts.push([id,m.name,m.color,m.is_admin,m.avatar_hash||'',S.avatars.has(m.avatar_hash)?1:0,m.birth_month||'',m.birth_day||'',m.managed_by||''].join('|'));});
-  S.items.forEach(function(i){parts.push([i.id,i.title,i.link,i.occasion,i.note,i.price,i.photo_hash,S.photos.has(i.photo_hash)?1:0,i.received_at||''].join('|'));});
+  var parts=[S.members.size,S.v2,S.v3,startOfToday().getTime()];
+  S.members.forEach(function(m,id){parts.push([id,m.name,m.color,m.is_admin,m.avatar_hash||'',S.avatars.has(m.avatar_hash)?1:0,m.birth_month||'',m.birth_day||'',m.managed_by||'',m.bio||''].join('|'));});
+  S.items.forEach(function(i){parts.push([i.id,i.title,i.link,i.occasion,i.note,i.price,i.photo_hash,S.photos.has(i.photo_hash)?1:0,i.received_at||'',i.priority||0,i.link_title||'',i.link_desc||'',i.price_seen||'',i.price_base||''].join('|'));});
   S.claims.forEach(function(list,id){parts.push(id+':'+list.map(function(c){return c.buyer+c.mode;}).sort().join(','));});
   parts.push(JSON.stringify(S.santa));
   parts.push(S.online);
   return parts.join('\n');
 }
 function loadMembers(){
+  var v3='members?select=id,name,color,is_admin,avatar_hash,birth_month,birth_day,managed_by,bio&order=name.asc';
   var v2='members?select=id,name,color,is_admin,avatar_hash,birth_month,birth_day,managed_by&order=name.asc';
-  return rest('GET',v2).then(function(r){S.v2=true;return r;},function(e){
+  return rest('GET',v3).then(function(r){S.v2=true;S._m3=true;return r;},function(e){
     if(!(e&&e.status===400)) throw e;
-    S.v2=false;
-    return tryGet('members?select=id,name,color,is_admin,avatar_hash&order=name.asc','members?select=id,name,color,is_admin&order=name.asc');
+    S._m3=false;
+    return rest('GET',v2).then(function(r){S.v2=true;return r;},function(e2){
+      if(!(e2&&e2.status===400)) throw e2;
+      S.v2=false;
+      return tryGet('members?select=id,name,color,is_admin,avatar_hash&order=name.asc','members?select=id,name,color,is_admin&order=name.asc');
+    });
+  });
+}
+function loadItems(){
+  var base='id,owner,title,link,occasion,note,price,photo_hash,created_at';
+  var v3=base+',received_at,link_title,link_desc,link_site,priority,price_base,price_seen';
+  return rest('GET','items?select='+v3+'&order=created_at.desc').then(function(r){S._i3=true;return r;},function(e){
+    if(!(e&&e.status===400)) throw e;
+    S._i3=false;
+    return tryGet('items?select='+base+',received_at&order=created_at.desc','items?select='+base+'&order=created_at.desc');
   });
 }
 function loadAll(){
@@ -724,13 +855,14 @@ function loadAll(){
   return Promise.all([
     rpc('current_member'),
     loadMembers(),
-    tryGet('items?select='+icols+',received_at&order=created_at.desc','items?select='+icols+'&order=created_at.desc'),
+    loadItems(),
     tryGet('claims?select=item_id,buyer,mode','claims?select=item_id,buyer'),
     rpc('santa_overview').catch(function(){return [];})
   ]).then(function(r){
     S.loading=false;
     if(!r[0]){leaveToAuth();return;}
     if(r[0]!==S.uid) S.uid=r[0];
+    S.v3=!!(S._m3&&S._i3);
     S.members=new Map(r[1].map(function(m){return [m.id,m];}));
     S.items=r[2].map(function(i){i.createdAt=Date.parse(i.created_at)||0;i.photo_hash=i.photo_hash||'';i.received_at=i.received_at||null;return i;});
     S.itemMap=new Map(S.items.map(function(i){return [i.id,i];}));
@@ -843,6 +975,11 @@ function saveItem(form){
   var note=$('#f-note').value.trim().slice(0,240);
   var p=parseFloat($('#f-price').value.replace(',','.')),price=isFinite(p)&&p>=0&&p<100000000?Math.round(p*100)/100:null;
   var body={title:title,link:link,occasion:occ,note:note,price:price};
+  if(S.v3){
+    var mt=S.draft&&S.draft.meta&&link&&S.draft.meta.url===link?S.draft.meta:null,pk=$('#f-pick');
+    body.link_title=mt&&mt.title?mt.title:null;body.link_desc=mt&&mt.desc?mt.desc:null;body.link_site=mt&&mt.site?mt.site:(link?hostOf(link):null);
+    body.priority=pk&&pk.checked?1:0;
+  }
   if(!id){body.owner=owner;body.photo=S.draft.photo||'';}
   else if(S.draft.dirty) body.photo=S.draft.photo||'';
   var btn=form.querySelector('button[type=submit]');btn.disabled=true;
@@ -890,10 +1027,12 @@ function saveProfile(form){
     if(!(r&&r.ok)){btn.disabled=false;msgBox('#p-msg','form-error',authMsg(r&&r.error));return;}
     lsSet(NAME_KEY,name);
     var bdP=S.v2?rpc('set_birthday',{p_month:bd.m,p_day:bd.d}):Promise.resolve({ok:true});
+    var bioP=S.v3&&$('#p-bio')?rpc('set_bio',{p_member:null,p_bio:$('#p-bio').value}):Promise.resolve({ok:true});
     var av=S.avDraft.dirty?rpc('set_avatar',{p_avatar:S.avDraft.data}):Promise.resolve({ok:true});
-    return Promise.all([bdP,av]).then(function(x){
+    return Promise.all([bdP,av,bioP]).then(function(x){
       btn.disabled=false;
       if(x[0]&&x[0].ok===false){msgBox('#p-msg','form-error',authMsg(x[0].error));return;}
+      if(x[2]&&x[2].ok===false){msgBox('#p-msg','form-error','Your note is too long. Keep it under 140 characters.');return;}
       if(x[1]&&x[1].ok){closeSheet();toast('Saved');return refresh();}
       msgBox('#p-msg','form-error',"Your name saved, but the picture didn't. Try a different photo.");
     });
@@ -910,6 +1049,8 @@ function saveChild(form){
     if(!(r&&r.ok)){btn.disabled=false;msgBox('#k-msg','form-error',authMsg(r&&r.error));return;}
     var kid=id||r.member;
     var av=S.avDraft.dirty?rpc('set_child_avatar',{p_member:kid,p_avatar:S.avDraft.data}):Promise.resolve({ok:true});
+    var bioK=S.v3&&$('#k-bio')?rpc('set_bio',{p_member:kid,p_bio:$('#k-bio').value}).catch(function(){}):Promise.resolve();
+    av=av.then(function(a){return bioK.then(function(){return a;});});
     return av.then(function(a){
       btn.disabled=false;
       if(a&&a.ok===false){msgBox('#k-msg','form-error','Saved, but the picture didn\'t. Try a different photo.');return;}
@@ -990,6 +1131,53 @@ function delSanta(id){
     toast('Draw deleted');return refresh().then(function(){if(S.sheet&&S.sheet.mode==='santa') drawSheet();});
   }).catch(function(e){toast(offlineMsg(e));});
 }
+function b64uToBytes(b){var p=(b+'===').slice(0,b.length+(4-b.length%4)%4).replace(/-/g,'+').replace(/_/g,'/');var r=atob(p),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++) o[i]=r.charCodeAt(i);return o;}
+function loadReminders(){
+  if(!S.v3||!pushSupport().ok){S.rem=null;return Promise.resolve();}
+  var local=navigator.serviceWorker.ready.then(function(reg){return reg.pushManager.getSubscription();}).then(function(sub){return sub;},function(){return null;});
+  return Promise.all([rpc('get_reminders'),local]).then(function(x){
+    var r=x[0]||{};S.rem={prefs:r.prefs||{},devices:r.devices||0,thisDevice:!!x[1]};
+    if(S.tab==='me'&&S.shown==='main') paintMain();
+  }).catch(function(){});
+}
+function pushOn(){
+  var st=$('.blk .btn[data-act=push-on]');if(st) st.disabled=true;
+  Notification.requestPermission().then(function(p){
+    if(p!=='granted'){toast('Notifications were not allowed.');S.rem=S.rem||{prefs:{},devices:0};paintMain();return;}
+    return navigator.serviceWorker.ready.then(function(reg){
+      return reg.pushManager.getSubscription().then(function(old){return old||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(CFG.VAPID_PUBLIC_KEY)});});
+    }).then(function(sub){
+      var j=sub.toJSON(),k=j.keys||{};
+      return rpc('save_push_sub',{p_endpoint:j.endpoint,p_p256dh:k.p256dh,p_auth:k.auth});
+    }).then(function(r){
+      if(r&&r.ok){toast('Reminders are on');return loadReminders();}
+      toast("That didn't work. Try again.");
+    });
+  }).catch(function(){toast("Couldn't turn reminders on. Check your connection and try again.");paintMain();});
+}
+function pushOff(){
+  navigator.serviceWorker.ready.then(function(reg){return reg.pushManager.getSubscription();}).then(function(sub){
+    if(!sub) return;var ep=sub.endpoint;
+    return sub.unsubscribe().then(function(){return rpc('delete_push_sub',{p_endpoint:ep});});
+  }).then(function(){toast('Reminders are off on this phone');return loadReminders();}).catch(function(){toast("That didn't work.");});
+}
+function pushTest(){
+  navigator.serviceWorker.ready.then(function(reg){return reg.showNotification('I want this',{body:'This is what a reminder looks like.',icon:'icon-192.png',tag:'test'});}).catch(function(){toast("Couldn't show a test.");});
+}
+function setRem(k){
+  var cur=S.rem&&S.rem.prefs?S.rem.prefs[k]!==false:true,o={};o[k]=!cur;
+  if(S.rem) S.rem.prefs[k]=!cur;paintMain();
+  rpc('set_reminders',{p_prefs:o}).catch(function(){toast("That didn't save.");loadReminders();});
+}
+function clearReceived(which){
+  var kids=Array.from(S.members.entries()).filter(function(e){return e[1].managed_by===S.uid;}).map(function(e){return e[0];});
+  var owners=which==='mine'?[S.uid].concat(kids):[which];
+  if(which!=='mine'&&!canManage(which)) return;
+  if(S.armClear!==which){S.armClear=which;paintMain();setTimeout(function(){if(S.armClear===which){S.armClear=false;paintMain();}},4000);return;}
+  S.armClear=false;
+  rest('DELETE','items?owner=in.('+owners.map(encodeURIComponent).join(',')+')&received_at=not.is.null',null,'return=minimal')
+    .then(function(){toast('Cleared out');return refresh();}).catch(function(e){toast(offlineMsg(e));paintMain();});
+}
 function inviteText(){
   var url=location.origin+location.pathname+(S.joinCode?'#code='+encodeURIComponent(S.joinCode):'');
   return 'Join our family wish list on I Want This: '+url+'\nThe family code is filled in for you. Just pick your own name and PIN.\nOn Android: Chrome menu, then Install app. On iPhone: Share, then Add to Home Screen.';
@@ -1003,7 +1191,14 @@ function copyText(t,ok){
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');if(!el) return;
   var a=el.dataset.act,id=el.dataset.id;
-  if(a==='tab'){S.tab=el.dataset.tab;S.viewing=null;S.filter='all';S.armBulk=false;paintMain();window.scrollTo(0,0);}
+  if(a==='tab'){S.tab=el.dataset.tab;S.viewing=null;S.filter='all';S.armBulk=false;S.armClear=false;paintMain();window.scrollTo(0,0);if(S.tab==='me'){loadReminders();loadJoinCode();}}
+  else if(a==='pref'){var v=el.dataset.v;setPref(el.dataset.k,el.dataset.k==='accent'?parseInt(v,10):v);paintMain();}
+  else if(a==='prefsw'){setPref(el.dataset.k,!PREF[el.dataset.k]);paintMain();}
+  else if(a==='rem') setRem(el.dataset.k);
+  else if(a==='push-on') pushOn();
+  else if(a==='push-off') pushOff();
+  else if(a==='push-test') pushTest();
+  else if(a==='clear-received') clearReceived(el.dataset.owner);
   else if(a==='person'){S.tab='family';S.viewing=el.dataset.uid;S.filter='all';paintMain();window.scrollTo(0,0);}
   else if(a==='person-from-santa'){closeSheet();S.tab='family';S.viewing=el.dataset.uid;S.filter='all';paintMain();window.scrollTo(0,0);}
   else if(a==='back'){S.viewing=null;S.filter='all';paintMain();window.scrollTo(0,0);}
