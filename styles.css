@@ -305,3 +305,6 @@ body.grid .card-main .chev{display:none}
 body.grid .thumb{width:100%;height:auto;aspect-ratio:1/1}
 body.grid .card-foot{flex-direction:column;align-items:stretch}
 body.noprice .price,body.noprice .sum-t,body.noprice .bg-s,body.noprice .dropbadge,body.noprice .dropnote{display:none}
+
+.ev-santa{display:flex;align-items:center;gap:6px;margin-top:3px;color:var(--accent);font-weight:700}
+button.ev .chev{margin-left:auto;color:var(--ink-2)}

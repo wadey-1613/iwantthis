@@ -403,12 +403,14 @@ function eventsHTML(){
   var xd=daysUntil(12,25);
   ev.push({kind:'xmas',days:xd});
   ev.sort(function(a,b){return a.days-b.days;});
-  var show=ev.filter(function(e){return e.days<=75;}).slice(0,4);
+  var show=ev.filter(function(e){return e.days<=75||(e.kind==='xmas'&&S.santa.length>0);}).slice(0,4);
   if(!show.some(function(e){return e.kind==='xmas';})&&!show.length) show=[ev.filter(function(e){return e.kind==='xmas';})[0]];
   var rows=show.map(function(e){
     if(e.kind==='xmas'){
       var n=0;S.members.forEach(function(m,id){if(id!==S.uid) n+=openFor(id,['christmas']);});
-      return '<div class="ev"><span class="ev-ic">'+ic('star',22)+'</span><div class="ev-t"><div class="ev-n">Christmas</div><div class="ev-s">'+(xd===0?'Today!':inDays(xd))+(n?' · '+plural(n,'gift idea')+' still to buy':'')+'</div></div></div>';
+      var ns=S.santa.length;
+      return '<button class="ev" data-act="santa"><span class="ev-ic">'+ic('star',22)+'</span><div class="ev-t"><div class="ev-n">Christmas</div><div class="ev-s">'+(xd===0?'Today!':inDays(xd))+(n?' · '+plural(n,'gift idea')+' still to buy':'')+'</div>'+
+        '<div class="ev-s ev-santa">'+ic('gift',14)+' '+(ns?'Secret Santa: you\'re in '+(ns===1?'a draw':ns+' draws')+'. Tap to see':'Secret Santa: set one up')+'</div></div><span class="chev">'+ic('chevron',20)+'</span></button>';
     }
     var mine=e.uid===S.uid,c=mine?0:openFor(e.uid,['birthday','anytime']);
     var tag=mine?'div':'button';
@@ -426,8 +428,8 @@ function familyHTML(){
   var others=Array.from(S.members.entries()).filter(function(e){return e[0]!==S.uid;}).sort(function(a,b){return nm(a[1]).localeCompare(nm(b[1]));});
   var head='<div class="page-head"><h1>Family</h1><p class="sub">Tap a name to see what they want.</p></div>';
   var kidBtn=S.v2?'<button class="add soft" data-act="child-add">'+ic('plus',20)+' Add a child or someone without a phone</button>':'';
-  if(!others.length) return head+eventsHTML()+santaCardHTML()+'<div class="empty"><h2>Nobody else is here yet</h2><p>Send the app link and the family code to your family. They show up here once they join.</p></div>'+kidBtn;
-  return head+eventsHTML()+santaCardHTML()+'<ul class="items">'+others.map(function(e){
+  if(!others.length) return head+eventsHTML()+'<div class="empty"><h2>Nobody else is here yet</h2><p>Send the app link and the family code to your family. They show up here once they join.</p></div>'+kidBtn;
+  return head+eventsHTML()+'<ul class="items">'+others.map(function(e){
     var m=e[1],list=S.items.filter(function(i){return i.owner===e[0]&&!i.received_at;});
     var open=list.filter(function(i){return !isTaken(i.id);}).length;
     var ct=list.length?plural(list.length,'wish')+', '+open+' still to buy':'Nothing on their list yet';
