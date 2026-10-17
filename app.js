@@ -30,7 +30,10 @@ var P={
   cake:'<path d="M4 20h16M5 20v-6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6"/><path d="M5 16c2 1.5 3.5 1.5 5 0s3.5-1.5 5 0 2.5 1.2 4 0M12 12V8M12 5.5v.01"/>',
   star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
   user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>',
-  link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'
+  link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  big:'<rect x="3" y="3" width="18" height="11" rx="3"/><path d="M3 18h18M3 21h10"/>',
+  grid:'<rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/>',
+  shuffle:'<path d="M3 7h3c5 0 5 10 10 10h5M3 17h3c1.8 0 3-1 4-2.4M14 9c.8-1.2 1.2-2 2-2.4M18 4l3 3-3 3M18 14l3 3-3 3"/>'
 };
 function ic(n,s){s=s||20;return '<svg class="ic" width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+P[n]+'</svg>';}
 function $(s){return document.querySelector(s);}
@@ -53,7 +56,7 @@ var PREF_KEY='iwt.prefs.v1';
 function readPrefs(){
   var p={};try{p=JSON.parse(lsGet(PREF_KEY)||'{}')||{};}catch(e){}
   return {theme:['auto','light','dark'].indexOf(p.theme)>=0?p.theme:'auto',accent:(p.accent>=0&&p.accent<6)?(p.accent|0):0,
-    size:['n','l','xl'].indexOf(p.size)>=0?p.size:'n',layout:p.layout==='grid'?'grid':'list',dense:!!p.dense,hidePrices:!!p.hidePrices};
+    size:['n','l','xl'].indexOf(p.size)>=0?p.size:'n',layout:(p.layout==='grid'||p.layout==='list')?p.layout:'big',dense:!!p.dense,hidePrices:!!p.hidePrices,snow:!!p.snow,calm:!!p.calm};
 }
 var PREF=readPrefs();
 function applyPrefs(){
@@ -61,8 +64,9 @@ function applyPrefs(){
   var dark=PREF.theme==='dark'||(PREF.theme==='auto'&&!!(mq&&mq.matches));
   de.dataset.mode=dark?'dark':'light';de.dataset.accent=String(PREF.accent);de.dataset.size=PREF.size;
   var b=document.body;if(!b) return;
-  b.classList.toggle('grid',PREF.layout==='grid');b.classList.toggle('dense',PREF.dense);b.classList.toggle('noprice',PREF.hidePrices);
-  try{var tc=document.querySelectorAll('meta[name=theme-color]');for(var i=0;i<tc.length;i++) tc[i].setAttribute('content',dark?'#1E1719':'#FFF8F2');}catch(e){}
+  b.classList.toggle('v-big',PREF.layout==='big');b.classList.toggle('v-grid',PREF.layout==='grid');b.classList.toggle('v-list',PREF.layout==='list');b.classList.toggle('dense',PREF.dense);b.classList.toggle('noprice',PREF.hidePrices);
+  try{var tc=document.querySelectorAll('meta[name=theme-color]');for(var i=0;i<tc.length;i++) tc[i].setAttribute('content',dark?'#15132B':'#F6F4FB');}catch(e){}
+  if(window.iwtSnow) window.iwtSnow(PREF.snow);
 }
 function setPref(k,v){PREF[k]=v;lsSet(PREF_KEY,JSON.stringify(PREF));applyPrefs();}
 try{var _mq=window.matchMedia('(prefers-color-scheme: dark)');if(_mq.addEventListener) _mq.addEventListener('change',applyPrefs);}catch(e){}
@@ -349,7 +353,17 @@ function filterBar(list){
 }
 function applyFilter(list){var f=effFilter(list);return f==='all'?list:list.filter(function(i){return occKey(i)===f;});}
 function tagHTML(i){return '<span class="tag">'+esc(occLabel(occKey(i)))+'</span>';}
-function thumbHTML(i){var p=photoOf(i);return okPhoto(p)?'<img class="thumb" src="'+p+'" alt="">':'<span class="thumb">'+ic('gift',30)+'</span>';}
+var EMO=[[/head|ear ?bud|airpod|speaker|audio|sound/i,'🎧'],[/lego|brick|block/i,'🧱'],[/game|xbox|playstation|ps5|switch|nintendo|controller|steam/i,'🎮'],[/book|novel|kindle/i,'📚'],[/shoe|trainer|boot|sneaker/i,'👟'],[/coat|jacket|hoodie|jumper|shirt|dress|jeans|top\b|socks/i,'🧥'],[/watch/i,'⌚'],[/phone|iphone|samsung|tablet|ipad/i,'📱'],[/laptop|computer|keyboard|mouse|monitor|pc\b/i,'💻'],[/tv|television/i,'📺'],[/camera|photo/i,'📷'],[/bike|cycle|scooter/i,'🚲'],[/perfume|aftershave|fragrance|candle/i,'🕯️'],[/makeup|lipstick|skin|cream|beauty/i,'💄'],[/ring|necklace|bracelet|earring|jewel/i,'💍'],[/bag|backpack|purse|wallet/i,'👜'],[/toy|doll|teddy|plush|puzzle/i,'🧸'],[/coffee|tea|mug|kettle/i,'☕'],[/wine|beer|gin|whisky|whiskey|prosecco/i,'🍷'],[/choc|sweet|candy|cake|biscuit/i,'🍫'],[/pan|knife|cook|air ?fryer|oven|blender/i,'🍳'],[/plant|garden|flower|seed/i,'🌿'],[/ball|football|golf|tennis|gym|yoga|weights/i,'⚽'],[/guitar|piano|drum|music|vinyl/i,'🎸'],[/paint|art|pencil|craft/i,'🎨'],[/holiday|trip|ticket|voucher|gift card|experience/i,'🎟️']];
+function emojiFor(t){t=String(t||'');for(var k=0;k<EMO.length;k++){if(EMO[k][0].test(t)) return EMO[k][1];}return '🎁';}
+function hueOf(t){var h=0;t=String(t||'');for(var k=0;k<t.length;k++) h=(h*31+t.charCodeAt(k))%360;return h;}
+function thumbHTML(i){var p=photoOf(i);return okPhoto(p)?'<img class="thumb" src="'+p+'" alt="">':'<span class="thumb ph" style="--h:'+hueOf(i.title)+'"><span class="ph-e">'+emojiFor(i.title)+'</span></span>';}
+function mediaHTML(i){
+  var p=photoOf(i),u=safeUrl(i.link),site=u?(i.link_site||hostOf(u)):'',inner;
+  if(okPhoto(p)) inner='<img class="pic" src="'+p+'" alt="" loading="lazy">';
+  else if(i.photo_hash) inner='<span class="ph skel" style="--h:'+hueOf(i.title)+'"></span>';
+  else inner='<span class="ph" style="--h:'+hueOf(i.title)+'"><span class="ph-e">'+emojiFor(i.title)+'</span></span>';
+  return '<span class="media">'+inner+'<span class="mtop">'+tagHTML(i)+(i.priority?'<span class="pickbadge">'+ic('star',13)+' Top pick</span>':'')+'</span>'+(u?'<span class="msite">'+ic('link',13)+'<span>'+esc(site)+'</span></span>':'')+'</span>';
+}
 
 function statusHTML(i){
   var cl=claimsOf(i.id),id=esc(i.id),full=fullClaim(i.id),mine=myClaim(i.id);
@@ -363,10 +377,18 @@ function statusHTML(i){
 }
 function cardHTML(i,showStatus){
   var got=!!i.received_at;
-  return '<li class="card'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(i.id)+'">'+thumbHTML(i)+
-    '<div style="min-width:0"><div class="card-title">'+esc(i.title)+'</div><div class="card-meta">'+tagHTML(i)+(hasPrice(i)?'<span class="price">about '+fmtPrice(i.price)+'</span>':'')+(i.priority?'<span class="pickbadge">'+ic('star',13)+' Top pick</span>':'')+(priceDrop(i)!=null?'<span class="dropbadge">Now '+fmtPrice(priceDrop(i))+'</span>':'')+(safeUrl(i.link)?ic('link',15):'')+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</div></div>'+
+  return '<li class="card'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(i.id)+'">'+mediaHTML(i)+
+    '<span class="card-body"><span class="card-title">'+esc(i.title)+'</span><span class="card-meta">'+(hasPrice(i)?'<span class="price">about '+fmtPrice(i.price)+'</span>':'')+(priceDrop(i)!=null?'<span class="dropbadge">Now '+fmtPrice(priceDrop(i))+'</span>':'')+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</span></span>'+
     '<span class="chev">'+ic('chevron',20)+'</span></button>'+
     (showStatus&&!got?'<div class="card-foot">'+statusHTML(i)+'</div>':'')+'</li>';
+}
+function viewSwitch(){
+  return '<div class="viewsw" role="group" aria-label="How lists look">'+[['big','big','Big cards'],['grid','grid','Photo grid'],['list','list','List']].map(function(v){
+    return '<button type="button" class="vbtn" data-act="view" data-v="'+v[0]+'" aria-label="'+v[2]+'" aria-pressed="'+(PREF.layout===v[0])+'">'+ic(v[1],18)+'</button>';}).join('')+'</div>';
+}
+function greeting(){
+  var h=new Date().getHours();
+  return h<5?'Late one':h<12?'Morning':h<18?'Afternoon':'Evening';
 }
 function receivedSection(list,showStatus){
   var got=list.filter(function(i){return !!i.received_at;});
@@ -386,8 +408,9 @@ function mineHTML(){
   if(!list.length) body='<div class="empty"><h2>Nothing on your list yet</h2><p>See something you like? Add its name, a link or a photo. Your family will see it and can pick it up for Christmas or your birthday.</p></div>';
   else body='<ul class="items">'+shown.map(function(i){return cardHTML(i,false);}).join('')+'</ul>';
   var bulk=(S.v2&&f!=='all'&&shown.length)?'<button class="btn ghost small bulk" data-act="bulk-received">'+(S.armBulk?'Tap again to confirm':'Mark all '+esc(occLabel(f))+' items as received')+'</button>':'';
-  return '<div class="page-head"><h1>Your list</h1><p class="sub">'+(list.length?plural(list.length,'thing')+'. ':'')+"The family can see this list. You won't see who has bought what.</p></div>"+
-    '<button class="add" data-act="add" data-owner="'+esc(S.uid)+'">'+ic('plus',20)+' Add something you want</button>'+nudge+filterBar(list)+bulk+body+(S.v2?receivedSection(all,false):'');
+  var meM=S.members.get(S.uid);
+  return '<div class="page-head hello"><h1>'+greeting()+', '+esc(nm(meM))+'</h1><p class="sub">'+(list.length?plural(list.length,'thing')+' on your list. ':'')+"The family can see it. You won't see who has bought what.</p></div>"+
+    '<button class="add" data-act="add" data-owner="'+esc(S.uid)+'">'+ic('plus',20)+' Add something you want</button>'+nudge+'<div class="toolbar">'+filterBar(list)+(list.length>1?viewSwitch():'')+'</div>'+bulk+body+(S.v2?receivedSection(all,false):'');
 }
 
 /* ---- family ---- */
@@ -452,7 +475,7 @@ function personHTML(uid){
   return '<button class="back" data-act="back">'+ic('back',18)+' Family</button>'+
     '<div class="person-head">'+avatar(m,'lg')+'<div><h1>'+esc(nm(m))+'’s list</h1><p class="sub">'+(list.length?plural(list.length,'thing')+', '+open+' still to buy':'Nothing on it yet')+'</p>'+(m.bio?'<p class="bio">“'+esc(m.bio)+'”</p>':'')+
     (manage&&isKid(m)?'<button class="btn small ghost editkid" data-act="child-edit" data-id="'+esc(uid)+'">Edit '+esc(nm(m))+'</button>':'')+'</div></div>'+
-    kidBar+filterBar(list)+body+(manage&&S.v2?receivedSection(all,true):'');
+    kidBar+(open>1?'<button class="btn ghost small surprise" data-act="surprise" data-uid="'+esc(uid)+'">'+ic('shuffle',18)+' Surprise me</button>':'')+'<div class="toolbar">'+filterBar(list)+(list.length>1?viewSwitch():'')+'</div>'+body+(manage&&S.v2?receivedSection(all,true):'');
 }
 
 /* ---- what I'm buying ---- */
@@ -482,7 +505,7 @@ function buyingHTML(){
       rows.map(function(x){
         var it=x.it,share=x.c.mode==='share',got=!!it.received_at;
         var state=got?'<span class="pill bought">'+ic('check',14)+' They\'ve got it</span>':(share?'<span class="pill bought">Halves with '+esc(buyerNames(shareClaims(it.id).filter(function(c){return c.buyer!==S.uid;}))||'you')+'</span>':'<span class="pill bought">'+ic('check',14)+' Bought</span>');
-        return '<li class="card'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(it.id)+'">'+thumbHTML(it)+'<div style="min-width:0"><div class="card-title">'+esc(it.title)+'</div><div class="card-meta">'+state+(x.cost!=null?'<span class="price">'+(share?'your share ':'')+fmtPrice(x.cost)+'</span>':'')+'</div></div><span class="chev">'+ic('chevron',20)+'</span></button></li>';
+        return '<li class="card row'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(it.id)+'">'+thumbHTML(it)+'<div style="min-width:0"><div class="card-title">'+esc(it.title)+'</div><div class="card-meta">'+state+(x.cost!=null?'<span class="price">'+(share?'your share ':'')+fmtPrice(x.cost)+'</span>':'')+'</div></div><span class="chev">'+ic('chevron',20)+'</span></button></li>';
       }).join('')+'</ul></section>';
   }).join('');
   return head+summary+html;
@@ -614,8 +637,8 @@ function meHTML(){
     '<div class="lbl2">Light or dark</div>'+optRow('theme',PREF.theme,[['auto','Match my phone'],['light','Light'],['dark','Dark']])+
     '<div class="lbl2">Colour</div><div class="accents" role="group">'+PALETTE.map(function(c,i){return '<button type="button" class="acc" data-act="pref" data-k="accent" data-v="'+i+'" style="--c:'+c+'" aria-label="'+COLOUR_NAMES[i]+'" aria-pressed="'+(PREF.accent===i)+'"></button>';}).join('')+'</div>'+
     '<div class="lbl2">Text size</div>'+optRow('size',PREF.size,[['n','Normal'],['l','Large'],['xl','Extra large']])+
-    '<div class="lbl2">Lists look like</div>'+optRow('layout',PREF.layout,[['list','A list'],['grid','Photos']])+
-    '<div class="trows">'+switchRow('Compact','Smaller cards, more on screen','prefsw','dense',PREF.dense)+switchRow('Hide prices','Keep the lists simple','prefsw','hidePrices',PREF.hidePrices)+'</div>');
+    '<div class="lbl2">Lists look like</div>'+optRow('layout',PREF.layout,[['big','Big cards'],['grid','Photo grid'],['list','A list']])+
+    '<div class="trows">'+switchRow('Compact','Smaller cards, more on screen','prefsw','dense',PREF.dense)+switchRow('Hide prices','Keep the lists simple','prefsw','hidePrices',PREF.hidePrices)+switchRow('Snowfall','Gentle falling snow, for the festive season','prefsw','snow',PREF.snow)+switchRow('Calm mode','No confetti when you tick things off','prefsw','calm',PREF.calm)+'</div>');
   if(S.v3) h+=remindersHTML();
   var fam='';
   if(isAdmin) fam+='<div class="subblk"><h3>Invite family</h3><p class="hint">Send them the link. The family code is filled in for them.</p><div class="codebox"><code id="join-code">'+esc(S.joinCode||'…')+'</code><button class="btn small ghost" type="button" data-act="copy-code">Copy</button></div><button class="btn primary" type="button" data-act="invite">Share an invite</button></div>';
@@ -818,6 +841,81 @@ function fillFromLink(auto){
   });
 }
 
+
+/* ================= fun: confetti, snow, surprise, picture backfill ================= */
+function reduceMotion(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
+function confetti(){
+  if(PREF.calm||reduceMotion()) return;
+  var c=document.createElement('canvas');c.className='fx';c.setAttribute('aria-hidden','true');
+  var w=c.width=window.innerWidth,h=c.height=window.innerHeight,x=c.getContext('2d');if(!x) return;
+  document.body.appendChild(c);
+  var cols=['#FF4F7B','#FFC83D','#2BC48A','#5B7CFF','#B06CFF','#FF8A3D'],ps=[],n=70,k;
+  for(k=0;k<n;k++) ps.push({x:w/2+(Math.random()-.5)*60,y:h*0.62,vx:(Math.random()-.5)*11,vy:-(6+Math.random()*9),r:4+Math.random()*5,a:Math.random()*6.28,va:(Math.random()-.5)*.4,c:cols[k%cols.length]});
+  var t0=Date.now();
+  (function step(){
+    var t=Date.now()-t0;x.clearRect(0,0,w,h);
+    for(var j=0;j<ps.length;j++){var p=ps[j];p.vy+=.34;p.vx*=.992;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;
+      x.save();x.globalAlpha=Math.max(0,1-t/1700);x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r,-p.r/2,p.r*2,p.r);x.restore();}
+    if(t<1700) requestAnimationFrame(step);else if(c.parentNode) c.parentNode.removeChild(c);
+  })();
+}
+(function(){
+  var cv=null,raf=0,fl=[];
+  function stop(){if(raf) cancelAnimationFrame(raf);raf=0;if(cv&&cv.parentNode) cv.parentNode.removeChild(cv);cv=null;}
+  window.iwtSnow=function(on){
+    if(!on||reduceMotion()){stop();return;}
+    if(cv) return;
+    cv=document.createElement('canvas');cv.className='fx snow';cv.setAttribute('aria-hidden','true');
+    var x=cv.getContext('2d');if(!x){cv=null;return;}
+    function size(){cv.width=window.innerWidth;cv.height=window.innerHeight;}
+    size();window.addEventListener('resize',size);
+    document.body.appendChild(cv);
+    fl=[];for(var k=0;k<42;k++) fl.push({x:Math.random()*cv.width,y:Math.random()*cv.height,r:1.4+Math.random()*2.6,v:.4+Math.random()*.9,d:Math.random()*6.28});
+    (function tick(){
+      if(!cv) return;
+      if(!document.hidden){
+        x.clearRect(0,0,cv.width,cv.height);var dk=document.documentElement.dataset.mode==='dark';x.fillStyle=dk?'rgba(255,255,255,.9)':'rgba(130,140,225,.75)';x.shadowColor=dk?'rgba(160,170,230,.5)':'rgba(255,255,255,.9)';x.shadowBlur=3;
+        for(var j=0;j<fl.length;j++){var f=fl[j];f.d+=.012;f.y+=f.v;f.x+=Math.sin(f.d)*.4;if(f.y>cv.height+6){f.y=-6;f.x=Math.random()*cv.width;}
+          x.beginPath();x.arc(f.x,f.y,f.r,0,6.28);x.fill();}
+      }
+      raf=requestAnimationFrame(tick);
+    })();
+  };
+})();
+if(PREF.snow&&window.iwtSnow) window.iwtSnow(true);
+function surprise(uid){
+  var m=S.members.get(uid);if(!m) return;
+  var open=S.items.filter(function(i){return i.owner===uid&&!i.received_at&&!isTaken(i.id);});
+  if(!open.length){toast('Everything on this list is already taken');return;}
+  var it=open[Math.floor(Math.random()*open.length)];
+  toast('How about this for '+nm(m)+'?');
+  openSheet('detail',it.id);
+}
+var PICTRIED_KEY='iwt.pictried.v1';
+function backfillPics(){
+  if(S.linkOff||S.backfilling) return;
+  var tried={};try{tried=JSON.parse(lsGet(PICTRIED_KEY)||'{}')||{};}catch(e){}
+  var todo=S.items.filter(function(i){return safeUrl(i.link)&&!i.photo_hash&&!tried[i.id]&&canManage(i.owner);}).slice(0,4);
+  if(!todo.length) return;
+  S.backfilling=true;var changed=false;
+  todo.reduce(function(p,it){
+    return p.then(function(){
+      if(S.linkOff) return;
+      return api('/functions/v1/link-info',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
+        tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));
+        if(r&&typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<3000000){
+          return shrinkTo(r.image,480,0.72).then(function(d){
+            return rest('PATCH','items?id=eq.'+encodeURIComponent(it.id),{photo:d},'return=minimal').then(function(){changed=true;});
+          });
+        }
+      }).catch(function(e){
+        if(e&&(e.status===404||e.status===401||e.status===403)) S.linkOff=true;
+        else {tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));}
+      });
+    });
+  },Promise.resolve()).then(function(){S.backfilling=false;if(changed) refresh();},function(){S.backfilling=false;});
+}
+
 /* ================= loading data ================= */
 function sigOf(){
   var parts=[S.members.size,S.v2,S.v3,startOfToday().getTime()];
@@ -876,7 +974,7 @@ function loadAll(){
     var s=sigOf();
     if(s!==S.sig||!wasOnline||S.shown!=='main'){S.sig=s;render();}
     consumeShare();
-    loadPhotos();loadAvatars();
+    loadPhotos();loadAvatars();backfillPics();
   }).catch(function(e){
     S.loading=false;
     if(window.console&&!(e&&e.network)) console.error('loadAll failed',e&&e.stack||e);
@@ -1005,7 +1103,7 @@ function delItem(){
 function setReceived(id,on){
   var it=getItem(id);if(!it||!canManage(it.owner)) return;
   rest('PATCH','items?id=eq.'+encodeURIComponent(id),{received_at:on?new Date().toISOString():null},'return=minimal')
-    .then(function(){toast(on?'Moved to Received':'Back on the list');return refresh();})
+    .then(function(){if(on) confetti();toast(on?'Moved to Received':'Back on the list');return refresh();})
     .then(function(){if(S.sheet&&S.sheet.mode==='detail') closeSheet();})
     .catch(function(e){toast(offlineMsg(e));});
 }
@@ -1100,7 +1198,7 @@ function setBought(id,mode){
   rest('POST','claims',body,'return=minimal').then(function(){
     var a=(S.claims.get(id)||[]).filter(function(c){return c.buyer!==S.uid;});a.push({buyer:S.uid,mode:mode});S.claims.set(id,a);
     S.sig=sigOf();render();
-    toast(mode==='share'?"You're going halves. "+nm(S.members.get(it.owner))+" can't see this.":"Marked as bought. "+nm(S.members.get(it.owner))+" can't see this.");
+    confetti();toast(mode==='share'?"You're going halves. "+nm(S.members.get(it.owner))+" can't see this.":"Marked as bought. "+nm(S.members.get(it.owner))+" can't see this.");
   }).catch(function(e){
     if(e&&(e.status===409||e.code==='23505')){toast('Someone else got there first. Have a look at the latest.');refresh();}
     else toast(offlineMsg(e));
@@ -1195,6 +1293,8 @@ document.addEventListener('click',function(e){
   var a=el.dataset.act,id=el.dataset.id;
   if(a==='tab'){S.tab=el.dataset.tab;S.viewing=null;S.filter='all';S.armBulk=false;S.armClear=false;paintMain();window.scrollTo(0,0);if(S.tab==='me'){loadReminders();loadJoinCode();}}
   else if(a==='pref'){var v=el.dataset.v;setPref(el.dataset.k,el.dataset.k==='accent'?parseInt(v,10):v);paintMain();}
+  else if(a==='view'){setPref('layout',el.dataset.v);paintMain();}
+  else if(a==='surprise') surprise(el.dataset.uid);
   else if(a==='prefsw'){setPref(el.dataset.k,!PREF[el.dataset.k]);paintMain();}
   else if(a==='rem') setRem(el.dataset.k);
   else if(a==='push-on') pushOn();
