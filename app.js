@@ -30,6 +30,7 @@ var P={
   cake:'<path d="M4 20h16M5 20v-6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6"/><path d="M5 16c2 1.5 3.5 1.5 5 0s3.5-1.5 5 0 2.5 1.2 4 0M12 12V8M12 5.5v.01"/>',
   star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
   user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2.2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   big:'<rect x="3" y="3" width="18" height="11" rx="3"/><path d="M3 18h18M3 21h10"/>',
   grid:'<rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/>',
@@ -48,7 +49,8 @@ var S={
   sheet:null,draft:null,shown:'',lastFocus:null,armDelete:false,armBulk:false,
   avDraft:{data:'',dirty:false},avTarget:null,
   authMode:'signin',sig:'',online:true,loading:false,photoBusy:false,avBusy:false,
-  joinCode:null,santaForm:false,santaShow:{},linkOff:false
+  joinCode:null,santaForm:false,santaShow:{},linkOff:false,
+  v4:false,holds:new Map(),gp:[],gb:new Map(),gi:[],rn:new Map(),myShare:undefined
 };
 
 /* ================= helpers ================= */
@@ -367,7 +369,8 @@ function mediaHTML(i){
 
 function statusHTML(i){
   var cl=claimsOf(i.id),id=esc(i.id),full=fullClaim(i.id),mine=myClaim(i.id);
-  if(!cl.length) return '<span class="pill open">Still to buy</span><button class="btn small ghost" data-act="bought" data-id="'+id+'">'+ic('check',16)+" I've bought this</button>";
+  if(!cl.length){var lk=S.v4?holdsOf(i.id):[];return (lk.length?'<span class="pill look">\uD83D\uDC40 '+esc(holdNames(lk))+' looking</span>':'<span class="pill open">Still to buy</span>')+'<button class="btn small ghost" data-act="bought" data-id="'+id+'">'+ic('check',16)+" I've bought this</button>";}
+  if(false) return '<span class="pill open">Still to buy</span><button class="btn small ghost" data-act="bought" data-id="'+id+'">'+ic('check',16)+" I've bought this</button>";
   if(full){
     if(full.buyer===S.uid) return '<span class="pill bought">'+ic('check',14)+' You bought this</span><button class="btn small linkish" data-act="unbought" data-id="'+id+'">Undo</button>';
     return '<span class="pill bought">'+ic('check',14)+' Bought by '+esc(nm(S.members.get(full.buyer)))+'</span>';
@@ -395,7 +398,7 @@ function receivedSection(list,showStatus){
   if(!got.length) return '';
   var owner=got[0].owner;
   return '<button class="chip rec-toggle" data-act="toggle-received" aria-pressed="'+S.showReceived+'">Received ('+got.length+')</button>'+
-    (S.showReceived?'<ul class="items rec-list">'+got.map(function(i){return cardHTML(i,false);}).join('')+'</ul>'+
+    (S.showReceived?'<ul class="items rec-list">'+got.map(function(i){return recCardHTML(i);}).join('')+'</ul>'+
       '<button class="btn linkish small" data-act="clear-received" data-owner="'+esc(owner)+'">'+(S.armClear===owner?'Tap again to clear them out':'Clear these out for good')+'</button>':'');
 }
 
@@ -409,6 +412,7 @@ function mineHTML(){
   else body='<ul class="items">'+shown.map(function(i){return cardHTML(i,false);}).join('')+'</ul>';
   var bulk=(S.v2&&f!=='all'&&shown.length)?'<button class="btn ghost small bulk" data-act="bulk-received">'+(S.armBulk?'Tap again to confirm':'Mark all '+esc(occLabel(f))+' items as received')+'</button>':'';
   var meM=S.members.get(S.uid);
+  nudge+=thanksNudge();
   return '<div class="page-head hello"><h1>'+greeting()+', '+esc(nm(meM))+'</h1><p class="sub">'+(list.length?plural(list.length,'thing')+' on your list. ':'')+"The family can see it. You won't see who has bought what.</p></div>"+
     '<button class="add" data-act="add" data-owner="'+esc(S.uid)+'">'+ic('plus',20)+' Add something you want</button>'+nudge+'<div class="toolbar">'+filterBar(list)+(list.length>1?viewSwitch():'')+'</div>'+bulk+body+(S.v2?receivedSection(all,false):'');
 }
@@ -487,7 +491,7 @@ function buyingHTML(){
     if(c) mineClaims.push({it:it,c:c});
   });
   var head='<div class="page-head"><h1>What you\'re buying</h1><p class="sub">Everything you\'ve ticked, in one place.</p></div>';
-  if(!mineClaims.length) return head+'<div class="empty"><h2>Nothing ticked yet</h2><p>When you tap “I\'ve bought this” on someone\'s list, it shows up here with a running total.</p></div>';
+  if(!mineClaims.length) return head+plannerHTML()+'<div class="empty"><h2>Nothing ticked yet</h2><p>When you tap “I\'ve bought this” on someone\'s list, it shows up here with a running total.</p></div>';
   var total=0,noPrice=0,groups={};
   mineClaims.forEach(function(x){
     var share=x.c.mode==='share';
@@ -508,7 +512,7 @@ function buyingHTML(){
         return '<li class="card row'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(it.id)+'">'+thumbHTML(it)+'<div style="min-width:0"><div class="card-title">'+esc(it.title)+'</div><div class="card-meta">'+state+(x.cost!=null?'<span class="price">'+(share?'your share ':'')+fmtPrice(x.cost)+'</span>':'')+'</div></div><span class="chev">'+ic('chevron',20)+'</span></button></li>';
       }).join('')+'</ul></section>';
   }).join('');
-  return head+summary+html;
+  return head+plannerHTML()+summary+html;
 }
 
 /* ================= sheets ================= */
@@ -545,7 +549,7 @@ function buyHTML(it){
   if(it.received_at) return '<div class="pill bought">'+ic('check',16)+' '+esc(owner)+' has got this</div>';
   if(!cl.length) return '<button class="btn primary wide" data-act="bought" data-id="'+id+'">'+ic('check',18)+" I've bought this</button>"+
     (S.v2?'<button class="btn ghost wide" data-act="bought-share" data-id="'+id+'">Go halves with someone</button>':'')+
-    '<p class="fine">'+esc(owner)+" won't see that it's taken. Everyone else will.</p>";
+    '<p class="fine">'+esc(owner)+" won't see that it's taken. Everyone else will.</p>"+holdUI(it);
   if(full){
     if(full.buyer===S.uid) return '<div class="pill bought">'+ic('check',16)+' You bought this</div><button class="btn ghost wide" data-act="unbought" data-id="'+id+'">Undo</button>';
     return '<div class="pill bought">'+ic('check',16)+' Bought by '+esc(nm(S.members.get(full.buyer)))+'</div><p class="fine">Pick something else from '+esc(owner)+'’s list.</p>';
@@ -640,6 +644,8 @@ function meHTML(){
     '<div class="lbl2">Lists look like</div>'+optRow('layout',PREF.layout,[['big','Big cards'],['grid','Photo grid'],['list','A list']])+
     '<div class="trows">'+switchRow('Compact','Smaller cards, more on screen','prefsw','dense',PREF.dense)+switchRow('Hide prices','Keep the lists simple','prefsw','hidePrices',PREF.hidePrices)+switchRow('Snowfall','Gentle falling snow, for the festive season','prefsw','snow',PREF.snow)+switchRow('Calm mode','No confetti when you tick things off','prefsw','calm',PREF.calm)+'</div>');
   if(S.v3) h+=remindersHTML();
+  h+=shareBlockHTML();
+  h+=bioBlockHTML();
   var fam='';
   if(isAdmin) fam+='<div class="subblk"><h3>Invite family</h3><p class="hint">Send them the link. The family code is filled in for them.</p><div class="codebox"><code id="join-code">'+esc(S.joinCode||'…')+'</code><button class="btn small ghost" type="button" data-act="copy-code">Copy</button></div><button class="btn primary" type="button" data-act="invite">Share an invite</button></div>';
   if(S.v2){
@@ -711,6 +717,10 @@ function drawSheet(){
     S.avTarget=m.id||null;S.avDraft={data:'',dirty:false};sh.innerHTML=childSheetHTML(m.id);syncAvatarUI();
   }
   else if(m.mode==='santa'){sh.innerHTML=santaSheetHTML();}
+  else if(m.mode==='planner'){var ph=plannerSheetHTML(m.id);if(!ph){closeSheet();return;}sh.innerHTML=ph;}
+  else if(m.mode==='idea'){S.draft={photo:''};sh.innerHTML=ideaSheetHTML(m.id,m.owner);}
+  else if(m.mode==='gp'){sh.innerHTML=gpSheetHTML();}
+  else if(m.mode==='thanks'){var itn=getItem(m.id);if(!itn||!canManage(itn.owner)){closeSheet();return;}S.draft={photo:'',dirty:false};sh.innerHTML=thanksSheetHTML(itn);}
 }
 function openSheet(mode,id,owner){
   S.lastFocus=document.activeElement;S.sheet={mode:mode,id:id,owner:owner||S.uid};S.armDelete=false;
@@ -842,6 +852,305 @@ function fillFromLink(auto){
 }
 
 
+/* ================= gifts: holds, planner, share link, thank-yous ================= */
+var HOLD_MS=7*864e5;
+function holdsOf(id){var now=Date.now();return (S.holds.get(id)||[]).filter(function(h){return now-Date.parse(h.created_at)<HOLD_MS;});}
+function myHold(id){return holdsOf(id).filter(function(h){return h.member_id===S.uid;})[0]||null;}
+function otherHolds(id){return holdsOf(id).filter(function(h){return h.member_id!==S.uid;});}
+function holdNames(list){return list.map(function(h){return nm(S.members.get(h.member_id));}).join(' & ');}
+function untilStr(h){var d=new Date(Date.parse(h.created_at)+HOLD_MS);return d.toLocaleDateString('en-GB',{weekday:'long'});}
+function holdUI(it){
+  if(!S.v4||it.owner===S.uid||it.received_at) return '';
+  var mine=myHold(it.id),o=otherHolds(it.id),id=esc(it.id),h='';
+  if(o.length) h+='<div class="pill look">👀 '+esc(holdNames(o))+(o.length>1?' are':' is')+' looking at this</div>';
+  if(mine) h+='<div class="pill look">👀 You\'re looking at this until '+esc(untilStr(mine))+'</div><button class="btn ghost wide" data-act="unhold" data-id="'+id+'">Not any more</button>';
+  else h+='<button class="btn ghost wide" data-act="hold" data-id="'+id+'">👀 I\'m looking at this</button><p class="fine">Tells the family for a week, so nobody else buys it by accident. '+esc(nm(S.members.get(it.owner)))+' won\'t see it.</p>';
+  return h;
+}
+function holdIt(id,on){
+  var it=getItem(id);if(!it) return;
+  rpc(on?'hold_item':'release_hold',{p_item:id}).then(function(r){
+    if(on&&!(r&&r.ok)){toast(r&&r.error==='taken'?'Someone has already bought this':'That didn\'t work. Try again.');return refresh();}
+    toast(on?'Noted. The family can see you\'re looking at it':'Done');
+    return refresh();
+  }).catch(function(e){toast(offlineMsg(e));});
+}
+
+/* ---- planner (private budgets and ideas) ---- */
+function plannerPeople(){
+  var out=[];
+  S.members.forEach(function(m,id){if(id!==S.uid) out.push({id:id,name:nm(m),m:m,kind:'m'});});
+  S.gp.forEach(function(g){out.push({id:g.id,name:g.name,m:{name:g.name,color:PALETTE[hueOf(g.name)%PALETTE.length]},kind:'g'});});
+  return out.sort(function(a,b){return a.name.localeCompare(b.name);});
+}
+function budgetOf(pid){var v=S.gb.get(pid);return typeof v==='number'&&isFinite(v)?v:null;}
+function ideasFor(pid){return S.gi.filter(function(g){return g.person===pid;});}
+function spentOn(pid){
+  var t=0;
+  S.claims.forEach(function(list,itemId){
+    var it=S.itemMap.get(itemId);if(!it||it.owner!==pid||!hasPrice(it)) return;
+    var mine=list.filter(function(c){return c.buyer===S.uid;})[0];if(!mine) return;
+    t+=mine.mode==='share'?it.price/Math.max(1,list.filter(function(c){return c.mode==='share';}).length):it.price;
+  });
+  ideasFor(pid).forEach(function(g){if(g.done&&typeof g.price==='number') t+=g.price;});
+  return Math.round(t*100)/100;
+}
+function barHTML(sp,b){
+  if(b==null||b<=0) return '';
+  var pct=Math.min(100,Math.round(sp/b*100));
+  return '<div class="bar'+(sp>b?' over':'')+'" role="img" aria-label="'+fmtPrice(sp)+' of '+fmtPrice(b)+'"><span style="width:'+pct+'%"></span></div>';
+}
+function plannerHTML(){
+  if(!S.v4) return '';
+  var rows=plannerPeople().map(function(p){
+    var b=budgetOf(p.id),sp=spentOn(p.id),n=ideasFor(p.id).filter(function(g){return !g.done;}).length;
+    return '<li><button class="person pl" data-act="planner" data-id="'+esc(p.id)+'">'+avatar(p.m,'sm')+'<div style="min-width:0"><div class="nm">'+esc(p.name)+'</div><div class="ct">'+
+      (b!=null?fmtPrice(sp)+' of '+fmtPrice(b):(sp?fmtPrice(sp)+' so far':'No budget yet'))+(n?', '+plural(n,'idea'):'')+'</div>'+barHTML(sp,b)+'</div><span class="chev">'+ic('chevron',20)+'</span></button></li>';
+  }).join('');
+  return '<section class="blk planner"><h2>Gift planner</h2><p class="sub">Set a budget and keep private ideas for anyone, even people who aren\'t in the app. Only you can see this.</p>'+
+    (rows?'<ul class="items">'+rows+'</ul>':'')+'<button class="btn ghost" data-act="gp-add">'+ic('plus',18)+' Add someone, like Mum</button></section>';
+}
+function showPlanner(pid){
+  if(S.sheet&&S.sheet.mode==='planner'){S.sheet.id=pid;drawSheet();$('#sheet').scrollTop=0;return;}
+  if(S.sheet) closeSheet();
+  openSheet('planner',pid);
+}
+function ideaThumb(g){
+  return okPhoto(g.photo)?'<img class="thumb" src="'+g.photo+'" alt="">':'<span class="thumb ph" style="--h:'+hueOf(g.title)+'"><span class="ph-e">'+emojiFor(g.title)+'</span></span>';
+}
+function plannerSheetHTML(pid){
+  var p=plannerPeople().filter(function(x){return x.id===pid;})[0];if(!p) return '';
+  var b=budgetOf(pid),sp=spentOn(pid),ideas=ideasFor(pid);
+  var left=(b!=null)?(b-sp>=0?fmtPrice(b-sp)+' left':fmtPrice(sp-b)+' over'):'';
+  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(p.name)+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
+    '<p class="hint">Only you can see this page.</p>'+
+    '<form id="budgetForm" class="box" data-id="'+esc(pid)+'" autocomplete="off"><h3>Budget</h3><div class="money"><span aria-hidden="true">£</span><input id="bg-amt" type="text" inputmode="decimal" placeholder="No budget" value="'+(b!=null?esc(String(b)):'')+'" aria-label="Budget in pounds"><button class="btn small ghost" type="submit">Save</button></div>'+
+    '<div class="ct">'+(sp?'Spent so far: '+fmtPrice(sp)+(left?' · '+left:''):'Nothing spent yet')+'</div>'+barHTML(sp,b)+
+    (p.kind==='m'?'<p class="fine">Spent includes things you\'ve ticked as bought from their list.</p>':'')+'</form>'+
+    '<h3 class="sec">Private ideas</h3>'+
+    (ideas.length?'<ul class="items ideas">'+ideas.map(function(g){
+      return '<li class="card row'+(g.done?' got':'')+'"><div class="card-main idea">'+ideaThumb(g)+'<div style="min-width:0"><div class="card-title">'+esc(g.title)+'</div><div class="card-meta">'+(typeof g.price==='number'?'<span class="price">about '+fmtPrice(g.price)+'</span>':'')+(g.done?'<span class="gotbadge">'+ic('check',13)+' Bought</span>':'')+(safeUrl(g.link)?'<a class="ilink" href="'+esc(safeUrl(g.link))+'" target="_blank" rel="noopener noreferrer">'+ic('link',14)+' '+esc(hostOf(g.link))+'</a>':'')+'</div>'+(g.note?'<div class="fine" style="margin-top:4px">'+esc(g.note)+'</div>':'')+'</div></div>'+
+        '<div class="card-foot"><button class="btn small '+(g.done?'ghost':'primary')+'" data-act="idea-done" data-id="'+esc(g.id)+'">'+(g.done?'Not bought yet':'I\'ve bought this')+'</button><button class="btn small ghost" data-act="idea-edit" data-id="'+esc(g.id)+'" data-person="'+esc(pid)+'">Edit</button></div></li>';
+    }).join('')+'</ul>':'<p class="hint">No ideas yet. Jot down anything that would suit them.</p>')+
+    '<button class="add" data-act="idea-add" data-person="'+esc(pid)+'">'+ic('plus',20)+' Add an idea</button>'+
+    (p.kind==='m'?'<button class="btn ghost wide" data-act="person-from-santa" data-uid="'+esc(pid)+'">See '+esc(p.name)+'’s list</button>':
+      '<button class="btn linkish" data-act="gp-del" data-id="'+esc(pid)+'">'+(S.armDelete===pid?'Tap again to remove '+esc(p.name)+' and their ideas':'Remove '+esc(p.name))+'</button>');
+}
+function saveBudget(f){
+  var pid=f.dataset.id,raw=$('#bg-amt').value.trim().replace(',','.'),v=parseFloat(raw);
+  var req;
+  if(!raw){req=rest('DELETE','gift_budgets?owner=eq.'+encodeURIComponent(S.uid)+'&person=eq.'+encodeURIComponent(pid),null,'return=minimal');}
+  else if(isFinite(v)&&v>=0&&v<1e8){req=rest('POST','gift_budgets?on_conflict=owner,person',{owner:S.uid,person:pid,amount:Math.round(v*100)/100},'resolution=merge-duplicates,return=minimal');}
+  else {toast('Enter the budget as a number, like 40');return;}
+  req.then(function(){toast(raw?'Budget saved':'Budget cleared');return refresh();}).then(function(){if(S.sheet&&S.sheet.mode==='planner') drawSheet();}).catch(function(e){toast(offlineMsg(e));});
+}
+function gpSheetHTML(){
+  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">Add someone</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
+    '<p class="hint" style="margin-bottom:14px">For people who aren\'t in the app, like Mum or a friend. Only you can see them.</p>'+
+    '<form id="gpForm" class="form" autocomplete="off"><div class="field"><label for="gp-name">Name</label><input id="gp-name" type="text" maxlength="30" required></div>'+
+    '<div class="field"><label for="gp-bud">Budget <span class="opt">optional</span></label><div class="money"><span aria-hidden="true">£</span><input id="gp-bud" type="text" inputmode="decimal" placeholder="0"></div></div>'+
+    '<button class="btn primary wide" type="submit">Add</button></form>';
+}
+function saveGp(f){
+  var name=$('#gp-name').value.trim().slice(0,30);if(!name) return;
+  var v=parseFloat($('#gp-bud').value.trim().replace(',','.')),btn=f.querySelector('button[type=submit]');btn.disabled=true;
+  rest('POST','gift_people',{owner:S.uid,name:name},'return=representation').then(function(r){
+    var row=Array.isArray(r)?r[0]:r;
+    if(row&&row.id&&isFinite(v)&&v>=0) return rest('POST','gift_budgets',{owner:S.uid,person:row.id,amount:Math.round(v*100)/100},'return=minimal').then(function(){return row;});
+    return row;
+  }).then(function(row){closeSheet();return refresh().then(function(){if(row&&row.id) openSheet('planner',row.id);});})
+  .catch(function(e){toast(offlineMsg(e));btn.disabled=false;});
+}
+function delGp(id){
+  if(S.armDelete!==id){S.armDelete=id;drawSheet();setTimeout(function(){if(S.armDelete===id){S.armDelete=false;if(S.sheet&&S.sheet.mode==='planner') drawSheet();}},4000);return;}
+  S.armDelete=false;
+  rpc('delete_gift_person',{p_id:id}).then(function(){closeSheet();toast('Removed');return refresh();}).catch(function(e){toast(offlineMsg(e));});
+}
+function ideaSheetHTML(id,pid){
+  var g=id?S.gi.filter(function(x){return x.id===id;})[0]:null;
+  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+(g?'Edit idea':'New idea')+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
+    '<form id="ideaForm" class="form" autocomplete="off" data-id="'+(g?esc(g.id):'')+'" data-person="'+esc(pid)+'">'+
+    '<div class="field"><label for="i-link">Link <span class="opt">optional</span></label><div class="linkrow"><input id="i-link" type="text" inputmode="url" autocapitalize="none" placeholder="Paste a link from any shop" value="'+esc(g&&g.link)+'"><button type="button" class="btn ghost small" data-act="idea-fill">Fill in</button></div><span id="i-stat" class="hint" aria-live="polite"></span></div>'+
+    '<div class="field"><label for="i-title">Idea</label><input id="i-title" type="text" maxlength="120" required placeholder="What would suit them?" value="'+esc(g&&g.title)+'"></div>'+
+    '<div class="field"><label for="i-price">Roughly how much? <span class="opt">optional</span></label><div class="money"><span aria-hidden="true">£</span><input id="i-price" type="text" inputmode="decimal" placeholder="0" value="'+(g&&typeof g.price==='number'?esc(String(g.price)):'')+'"></div></div>'+
+    '<div class="field"><label for="i-note">Notes <span class="opt">optional</span></label><textarea id="i-note" rows="2" maxlength="240" placeholder="Size, where you saw it">'+esc(g&&g.note)+'</textarea></div>'+
+    '<p class="fine">Private. Nobody else can see your ideas.</p>'+
+    '<div class="form-actions"><button class="btn primary grow" type="submit">'+(g?'Save changes':'Save idea')+'</button>'+(g?'<button class="btn danger" type="button" data-act="idea-del" data-id="'+esc(g.id)+'">Delete</button>':'')+'<button class="btn ghost" type="button" data-act="planner-back" data-person="'+esc(pid)+'">Back</button></div></form>';
+}
+function ideaFill(){
+  var u=safeUrl($('#i-link').value),st=$('#i-stat');
+  if(!u){if(st) st.textContent='Paste a link first.';return;}
+  if(S.linkOff){if(st) st.textContent='Reading links isn\'t switched on yet.';return;}
+  if(st) st.textContent='Reading the link…';
+  var form=$('#ideaForm');
+  api('/functions/v1/link-info',{method:'POST',body:{url:u}}).then(function(r){
+    if($('#ideaForm')!==form) return;
+    r=r||{};var t=$('#i-title'),p=$('#i-price'),done=[];
+    if(r.title&&!t.value.trim()){t.value=String(r.title).slice(0,120);done.push('name');}
+    if(typeof r.price==='number'&&isFinite(r.price)&&r.price>=0&&!p.value.trim()){p.value=String(Math.round(r.price*100)/100);done.push('price');}
+    var imgP=Promise.resolve();
+    if(typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<8000000&&S.draft){
+      imgP=shrinkTo(r.image,480,0.72).then(function(d){if(S.draft){S.draft.photo=d;done.push('picture');}}).catch(function(){});
+    }
+    return imgP.then(function(){var s2=$('#i-stat');if(s2) s2.textContent=done.length?'Filled in the '+done.join(', ')+'.':'Couldn\'t find details on that page.';});
+  }).catch(function(e){
+    var s2=$('#i-stat');if(e&&(e.status===404||e.status===401||e.status===403)) S.linkOff=true;
+    if(s2) s2.textContent=S.linkOff?'Reading links isn\'t switched on yet.':'Couldn\'t read that link.';
+  });
+}
+function saveIdea(f){
+  var id=f.dataset.id,pid=f.dataset.person,title=$('#i-title').value.trim();if(!title) return;
+  var p=parseFloat($('#i-price').value.replace(',','.')),price=isFinite(p)&&p>=0&&p<1e8?Math.round(p*100)/100:null;
+  var body={title:title,link:safeUrl($('#i-link').value)||'',note:$('#i-note').value.trim().slice(0,240),price:price};
+  if(S.draft&&S.draft.photo) body.photo=S.draft.photo;
+  var btn=f.querySelector('button[type=submit]');btn.disabled=true;
+  var req=id?rest('PATCH','gift_ideas?id=eq.'+encodeURIComponent(id),body,'return=minimal'):rest('POST','gift_ideas',Object.assign({owner:S.uid,person:pid},body),'return=minimal');
+  req.then(function(){toast('Saved');return refresh();}).then(function(){showPlanner(pid);}).catch(function(e){toast(offlineMsg(e));btn.disabled=false;});
+}
+function ideaDone(id){
+  var g=S.gi.filter(function(x){return x.id===id;})[0];if(!g) return;
+  rest('PATCH','gift_ideas?id=eq.'+encodeURIComponent(id),{done:!g.done},'return=minimal').then(function(){if(!g.done) confetti();return refresh();}).then(function(){if(S.sheet&&S.sheet.mode==='planner') drawSheet();}).catch(function(e){toast(offlineMsg(e));});
+}
+function ideaDel(id){
+  var g=S.gi.filter(function(x){return x.id===id;})[0];if(!g) return;
+  rest('DELETE','gift_ideas?id=eq.'+encodeURIComponent(id),null,'return=minimal').then(function(){toast('Deleted');return refresh();}).then(function(){showPlanner(g.person);}).catch(function(e){toast(offlineMsg(e));});
+}
+
+/* ---- share a list with someone who isn't in the app ---- */
+function shareUrl(){return S.myShare?location.origin+location.pathname+'#list='+S.myShare:'';}
+function loadShare(){
+  if(!S.v4) return;
+  rpc('get_list_share',{p_owner:S.uid}).then(function(r){
+    var t=r&&r.ok?(r.token||null):null;
+    if(t!==S.myShare){S.myShare=t;if(S.tab==='me') paintMain();}
+  }).catch(function(){});
+}
+function shareBlockHTML(){
+  if(!S.v4) return '';
+  var inner=S.myShare?
+    '<div class="codebox"><code>'+esc(shareUrl())+'</code></div><div class="btnrow"><button class="btn primary" data-act="share-send">Send the link</button><button class="btn ghost" data-act="share-copy">Copy</button><button class="btn linkish" data-act="share-stop">Stop sharing</button></div>'+
+    '<p class="hint">Anyone with this link can see your list, but not who has bought what, and they can\'t change anything. They can\'t tick things off, so tell the family if someone outside buys something for you.</p>':
+    '<button class="btn primary" data-act="share-create">Create a link</button><p class="hint">Good for grandparents or friends. They don\'t need the app or a code.</p>';
+  return blk('Share my list','Let someone outside the family see your list.',inner);
+}
+function shareMake(){rpc('create_list_share',{p_owner:S.uid}).then(function(r){if(r&&r.ok){S.myShare=r.token;paintMain();}else toast('That didn\'t work. Try again.');}).catch(function(e){toast(offlineMsg(e));});}
+function shareStop(){rpc('revoke_list_share',{p_owner:S.uid}).then(function(){S.myShare=null;toast('Sharing stopped. The old link no longer works.');paintMain();}).catch(function(e){toast(offlineMsg(e));});}
+function showShared(token){
+  document.title='A wish list · I Want This';
+  gate('<div class="gate"><div class="gate-mark pulse">'+ic('tag',28)+'</div><h1>Opening the list</h1></div>');
+  rawFetch('/rest/v1/rpc/get_shared_list',{method:'POST',body:{p_token:token}}).then(function(r){
+    if(!r||!r.ok){gateMsg('This link isn\'t working','The list may have been unshared. Ask the person to send you a new link.');return;}
+    var items=(r.items||[]).map(function(i,k){var ph=okPhoto(i.photo)?i.photo:'';i.photo_hash=ph?('sh'+k):'';if(ph) S.photos.set(i.photo_hash,ph);i.id='sh'+k;return i;});
+    var h='<div class="shared"><div class="brand">'+ic('tag',22)+'<span>I want <em>this</em></span></div><h1>'+esc(r.name)+'’s wish list</h1>'+(r.bio?'<p class="bio">“'+esc(r.bio)+'”</p>':'')+
+      '<p class="sub">You can see what '+esc(r.name)+' would like. Tap an item to open the shop page or compare prices.</p>'+
+      (items.length?'<ul class="items">'+items.map(function(i){
+        var u=safeUrl(i.link),L=searchLinks(i.title);
+        return '<li class="card"><div class="card-main">'+mediaHTML(i)+'<span class="card-body"><span class="card-title">'+esc(i.title)+'</span><span class="card-meta">'+(hasPrice(i)?'<span class="price">about '+fmtPrice(Number(i.price))+'</span>':'')+'</span>'+(i.note?'<span class="fine">'+esc(i.note)+'</span>':'')+'</span></div>'+
+          '<div class="card-foot">'+(u?'<a class="btn small ghost" href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">Open page '+ic('external',16)+'</a>':'')+'<a class="btn small ghost" href="'+esc(L.primary.href)+'" target="_blank" rel="noopener noreferrer">Compare prices '+ic('external',16)+'</a></div></li>';
+      }).join('')+'</ul>':'<div class="empty"><h2>Nothing on the list yet</h2><p>Check back soon.</p></div>')+
+      '<p class="fine">Tell the family if you buy something so nobody doubles up.</p></div>';
+    $('#gate').innerHTML=h;
+  }).catch(function(){gateMsg('Can\'t open the list','Check your connection and try again.','<button class="btn primary" data-act="reload">Try again</button>');});
+}
+
+/* ---- thank-yous and received gifts ---- */
+function thankedOf(id){var n=S.rn.get(id);return !!(n&&n.thanked);}
+function thanksNudge(){
+  if(!S.v4) return '';
+  var cut=Date.now()-60*864e5;
+  var n=S.items.filter(function(i){return i.owner===S.uid&&i.received_at&&Date.parse(i.received_at)>cut&&!thankedOf(i.id);}).length;
+  if(!n) return '';
+  return '<button class="nudge thanknudge" data-act="show-thanks"><span><strong>'+plural(n,'thank-you')+' to send.</strong> Tap to see what you\'ve been given.</span></button>';
+}
+function recCardHTML(i){
+  var base=cardHTML(i,false);
+  if(!S.v4||!canManage(i.owner)) return base;
+  var n=S.rn.get(i.id),th=!!(n&&n.thanked);
+  var foot='<div class="card-foot thanks"><span class="from">'+(n&&n.from_name?'From '+esc(n.from_name):'Who was it from?')+'</span>'+(n&&okPhoto(n.photo)?'<img class="rphoto" src="'+n.photo+'" alt="">':'')+
+    '<button class="btn small ghost" data-act="thanks" data-id="'+esc(i.id)+'">Details</button>'+
+    '<button class="btn small '+(th?'linkish':'primary')+'" data-act="thank-toggle" data-id="'+esc(i.id)+'">'+(th?'Thank-you sent ✓':'Mark thank-you sent')+'</button></div>';
+  return base.replace(/<\/li>$/,foot+'</li>');
+}
+function thanksSheetHTML(it){
+  var n=S.rn.get(it.id)||{};
+  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">Got it!</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
+    '<p class="hint" style="margin-bottom:14px">'+esc(it.title)+'. Note who it was from so you remember to say thanks. Only you can see this.</p>'+
+    '<form id="thanksForm" class="form" autocomplete="off" data-id="'+esc(it.id)+'">'+
+    '<div class="field"><label for="t-from">Who was it from? <span class="opt">optional</span></label><input id="t-from" type="text" maxlength="60" value="'+esc(n.from_name||'')+'"></div>'+
+    '<div class="field"><span class="lbl">Photo <span class="opt">optional</span></span><div class="photo-row"><div id="t-prev" class="prev">'+(okPhoto(n.photo)?'<img src="'+n.photo+'" alt="">':ic('camera',30))+'</div><div class="photo-actions"><label class="btn ghost small" for="t-photo">'+ic('camera',18)+'<span>Add a photo</span></label><input id="t-photo" class="sr-only" type="file" accept="image/*" data-tphoto="1"></div></div></div>'+
+    '<label class="check"><input type="checkbox" id="t-done"'+(n.thanked?' checked':'')+'><span><strong>Thank-you sent</strong><small>Tick once you\'ve said thanks.</small></span></label>'+
+    '<button class="btn primary wide" type="submit">Save</button></form>';
+}
+function saveThanks(f){
+  var id=f.dataset.id,body={item_id:id,from_name:$('#t-from').value.trim().slice(0,60),thanked:$('#t-done').checked};
+  if(S.draft&&S.draft.photo) body.photo=S.draft.photo;
+  var btn=f.querySelector('button[type=submit]');btn.disabled=true;
+  rest('POST','received_notes?on_conflict=item_id',body,'resolution=merge-duplicates,return=minimal').then(function(){closeSheet();toast('Saved');return refresh();}).catch(function(e){toast(offlineMsg(e));btn.disabled=false;});
+}
+function thankToggle(id){
+  var cur=thankedOf(id);
+  rest('POST','received_notes?on_conflict=item_id',{item_id:id,thanked:!cur},'resolution=merge-duplicates,return=minimal').then(function(){if(!cur) confetti();return refresh();}).catch(function(e){toast(offlineMsg(e));});
+}
+document.addEventListener('change',function(e){
+  var t=e.target;if(!(t&&t.matches&&t.matches('input[data-tphoto]'))) return;
+  var f=t.files&&t.files[0];if(!f) return;
+  shrink(f).then(function(d){if(S.draft){S.draft.photo=d;var p=$('#t-prev');if(p) p.innerHTML='<img src="'+d+'" alt="">';}}).catch(function(){toast("That photo couldn't be read. Try another one.");});
+});
+
+
+/* ================= app lock: face or fingerprint on every fresh open ================= */
+var LOCK_KEY='iwt.lock.v1';
+function lockInfo(){try{var l=JSON.parse(lsGet(LOCK_KEY)||'null');return l&&l.id?l:null;}catch(e){return null;}}
+function bytesToB64u(b){var s='',a=new Uint8Array(b);for(var i=0;i<a.length;i++) s+=String.fromCharCode(a[i]);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function b64uToBytes(t){t=t.replace(/-/g,'+').replace(/_/g,'/');while(t.length%4) t+='=';var s=atob(t),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++) a[i]=s.charCodeAt(i);return a;}
+function rand(n){var a=new Uint8Array(n);crypto.getRandomValues(a);return a;}
+function bioApi(){return !!(window.PublicKeyCredential&&navigator.credentials&&navigator.credentials.create&&window.isSecureContext);}
+S.bioOK=false;
+try{if(bioApi()&&PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function(v){S.bioOK=!!v;if(S.tab==='me'&&S.shown==='main') paintMain();}).catch(function(){});}catch(e){}
+function bioEnable(){
+  var me=S.members.get(S.uid);
+  return navigator.credentials.create({publicKey:{
+    challenge:rand(32),rp:{name:'I Want This',id:location.hostname},
+    user:{id:rand(16),name:nm(me),displayName:nm(me)},
+    pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+    authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'discouraged'},
+    timeout:60000,attestation:'none'}}).then(function(c){
+      if(!c||!c.rawId) throw new Error('no credential');
+      lsSet(LOCK_KEY,JSON.stringify({id:bytesToB64u(c.rawId),at:Date.now()}));
+    });
+}
+function bioAsk(){
+  var l=lockInfo();if(!l) return Promise.resolve();
+  return navigator.credentials.get({publicKey:{
+    challenge:rand(32),rpId:location.hostname,timeout:60000,userVerification:'required',
+    allowCredentials:[{type:'public-key',id:b64uToBytes(l.id),transports:['internal']}]}}).then(function(a){if(!a) throw new Error('cancelled');});
+}
+function bioToggle(){
+  if(lockInfo()){lsSet(LOCK_KEY,'');toast('Unlock is off');paintMain();return;}
+  if(!S.bioOK){toast("This phone can't do that from a web app.");return;}
+  bioEnable().then(function(){toast("Unlock is on. You'll be asked each time you open the app.");paintMain();})
+    .catch(function(e){toast(e&&e.name==='NotAllowedError'?'Cancelled. Nothing changed.':"Couldn't set that up on this phone.");});
+}
+function bioBlockHTML(){
+  var on=!!lockInfo();
+  if(!S.bioOK&&!on) return blk('App lock','',"<p class=\"hint\">Face or fingerprint unlock isn't available for web apps on this phone or browser. Your phone's own screen lock still protects the app.</p>");
+  return blk('App lock','Ask for your face or fingerprint every time the app is opened.',
+    '<div class="trows">'+switchRow('Unlock with face or fingerprint','Uses your phone\'s own Face ID or fingerprint. The app never sees your face.','bio-toggle','lock',on)+'</div>'+
+    '<p class="hint">This is a privacy screen for this phone. If your phone can\'t unlock, you can sign in again with your name and PIN.</p>');
+}
+function showLock(next,msg){
+  S.shown='lock';
+  gate('<div class="gate"><div class="gate-mark">'+ic('lock',28)+'</div><h1>Welcome back</h1><p>Unlock to see your family lists.</p><div id="lock-msg" role="alert">'+(msg?'<div class="form-error">'+esc(msg)+'</div>':'')+'</div>'+
+    '<button class="btn primary" data-act="bio-unlock">'+ic('lock',18)+' Unlock</button><button class="btn linkish" data-act="bio-pin">Use my name and PIN instead</button></div>');
+  S.lockNext=next;
+}
+function tryUnlock(){
+  bioAsk().then(function(){var n=S.lockNext;S.lockNext=null;if(n) n();}).catch(function(e){
+    var el=$('#lock-msg');if(el) el.innerHTML='<div class="form-error">'+(e&&e.name==='NotAllowedError'?'That didn\'t unlock. Try again.':'Couldn\'t unlock. Try again, or use your PIN.')+'</div>';
+  });
+}
+function bioPin(){lsSet(LOCK_KEY,'');lsSet(SESSION_KEY,'');location.reload();}
+
 /* ================= fun: confetti, snow, surprise, picture backfill ================= */
 function reduceMotion(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
 function confetti(){
@@ -938,6 +1247,9 @@ function sigOf(){
   S.items.forEach(function(i){parts.push([i.id,i.title,i.link,i.occasion,i.note,i.price,i.photo_hash,S.photos.has(i.photo_hash)?1:0,i.received_at||'',i.priority||0,i.link_title||'',i.link_desc||'',i.price_seen||'',i.price_base||''].join('|'));});
   S.claims.forEach(function(list,id){parts.push(id+':'+list.map(function(c){return c.buyer+c.mode;}).sort().join(','));});
   parts.push(JSON.stringify(S.santa));
+  parts.push(S.v4+JSON.stringify(Array.from(S.holds.entries()))+JSON.stringify(S.gp)+JSON.stringify(Array.from(S.gb.entries())));
+  parts.push(S.gi.map(function(g){return [g.id,g.person,g.title,g.link,g.note,g.price,g.done,(g.photo||'').length].join('|');}).join('\n'));
+  parts.push(Array.from(S.rn.values()).map(function(n){return [n.item_id,n.from_name,n.thanked,(n.photo||'').length].join('|');}).join('\n'));
   parts.push(S.online);
   return parts.join('\n');
 }
@@ -972,7 +1284,12 @@ function loadAll(){
     loadMembers(),
     loadItems(),
     tryGet('claims?select=item_id,buyer,mode','claims?select=item_id,buyer'),
-    rpc('santa_overview').catch(function(){return [];})
+    rpc('santa_overview').catch(function(){return [];}),
+    rest('GET','holds?select=item_id,member_id,created_at').catch(function(){return null;}),
+    rest('GET','gift_people?select=id,name&order=created_at.asc').catch(function(){return null;}),
+    rest('GET','gift_budgets?select=person,amount').catch(function(){return null;}),
+    rest('GET','gift_ideas?select=id,person,title,link,note,price,photo,done,created_at&order=created_at.desc').catch(function(){return null;}),
+    rest('GET','received_notes?select=item_id,from_name,photo,thanked').catch(function(){return null;})
   ]).then(function(r){
     S.loading=false;
     if(!r[0]){leaveToAuth();return;}
@@ -985,6 +1302,14 @@ function loadAll(){
     r[3].forEach(function(c){var a=cm.get(c.item_id)||[];a.push({buyer:c.buyer,mode:c.mode||'full'});cm.set(c.item_id,a);});
     S.claims=cm;
     S.santa=Array.isArray(r[4])?r[4]:[];
+    if(Array.isArray(r[5])){
+      S.v4=true;
+      var hm=new Map();r[5].forEach(function(h){var a=hm.get(h.item_id)||[];a.push(h);hm.set(h.item_id,a);});S.holds=hm;
+      S.gp=Array.isArray(r[6])?r[6]:[];
+      S.gb=new Map((Array.isArray(r[7])?r[7]:[]).map(function(b){return [b.person,Number(b.amount)];}));
+      S.gi=(Array.isArray(r[8])?r[8]:[]).map(function(g){g.price=(g.price==null?null:Number(g.price));g.photo=okPhoto(g.photo)?g.photo:'';return g;});
+      S.rn=new Map((Array.isArray(r[9])?r[9]:[]).map(function(n){n.photo=okPhoto(n.photo)?n.photo:'';return [n.item_id,n];}));
+    }
     var wasOnline=S.online;S.online=true;
     var s=sigOf();
     if(s!==S.sig||!wasOnline||S.shown!=='main'){S.sig=s;render();}
@@ -1075,6 +1400,7 @@ function submitAuth(form){
   });
 }
 function signOut(){
+  lsSet(LOCK_KEY,'');
   rpc('sign_out').catch(function(){}).then(function(){leaveToAuth();S.authMode='signin';showAuth('');});
 }
 
@@ -1119,7 +1445,7 @@ function setReceived(id,on){
   var it=getItem(id);if(!it||!canManage(it.owner)) return;
   rest('PATCH','items?id=eq.'+encodeURIComponent(id),{received_at:on?new Date().toISOString():null},'return=minimal')
     .then(function(){if(on) confetti();toast(on?'Moved to Received':'Back on the list');return refresh();})
-    .then(function(){if(S.sheet&&S.sheet.mode==='detail') closeSheet();})
+    .then(function(){if(S.sheet&&S.sheet.mode==='detail') closeSheet();if(on&&S.v4&&getItem(id)) openSheet('thanks',id);})
     .catch(function(e){toast(offlineMsg(e));});
 }
 function bulkReceived(){
@@ -1306,10 +1632,31 @@ function copyText(t,ok){
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');if(!el) return;
   var a=el.dataset.act,id=el.dataset.id;
-  if(a==='tab'){S.tab=el.dataset.tab;S.viewing=null;S.filter='all';S.armBulk=false;S.armClear=false;paintMain();window.scrollTo(0,0);if(S.tab==='me'){loadReminders();loadJoinCode();}}
+  if(a==='tab'){S.tab=el.dataset.tab;S.viewing=null;S.filter='all';S.armBulk=false;S.armClear=false;paintMain();window.scrollTo(0,0);if(S.tab==='me'){loadReminders();loadJoinCode();loadShare();}}
   else if(a==='pref'){var v=el.dataset.v;setPref(el.dataset.k,el.dataset.k==='accent'?parseInt(v,10):v);paintMain();}
   else if(a==='view'){setPref('layout',el.dataset.v);paintMain();}
   else if(a==='surprise') surprise(el.dataset.uid);
+  else if(a==='bio-toggle') bioToggle();
+  else if(a==='bio-unlock') tryUnlock();
+  else if(a==='bio-pin') bioPin();
+  else if(a==='hold') holdIt(id,true);
+  else if(a==='unhold') holdIt(id,false);
+  else if(a==='planner') showPlanner(id);
+  else if(a==='gp-add') openSheet('gp');
+  else if(a==='gp-del') delGp(id);
+  else if(a==='idea-add') openSheet('idea',null,el.dataset.person);
+  else if(a==='idea-edit') openSheet('idea',id,el.dataset.person);
+  else if(a==='idea-done') ideaDone(id);
+  else if(a==='idea-del') ideaDel(id);
+  else if(a==='idea-fill') ideaFill();
+  else if(a==='planner-back') showPlanner(el.dataset.person);
+  else if(a==='share-create') shareMake();
+  else if(a==='share-stop') shareStop();
+  else if(a==='share-copy') copyText(shareUrl(),'Link copied');
+  else if(a==='share-send'){var su=shareUrl();if(navigator.share) navigator.share({title:'My wish list',text:"Here's my wish list: "+su}).catch(function(){});else copyText(su,'Link copied');}
+  else if(a==='thanks') openSheet('thanks',id);
+  else if(a==='thank-toggle') thankToggle(id);
+  else if(a==='show-thanks'){S.showReceived=true;paintMain();}
   else if(a==='get-pic') getPic(id);
   else if(a==='prefsw'){setPref(el.dataset.k,!PREF[el.dataset.k]);paintMain();}
   else if(a==='rem') setRem(el.dataset.k);
@@ -1373,6 +1720,10 @@ document.addEventListener('submit',function(e){
   else if(f.id==='authForm') submitAuth(f);
   else if(f.id==='pinForm') savePin(f);
   else if(f.id==='resetForm') resetPin(f);
+  else if(f.id==='budgetForm') saveBudget(f);
+  else if(f.id==='gpForm') saveGp(f);
+  else if(f.id==='ideaForm') saveIdea(f);
+  else if(f.id==='thanksForm') saveThanks(f);
 });
 $('#scrim').addEventListener('click',function(e){if(e.target.id==='scrim') closeSheet();});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&S.sheet) closeSheet();});
@@ -1409,10 +1760,7 @@ function pasteLink(){
     $('#f-link').value=u;fillFromLink(true);
   }).catch(function(){if(st) st.textContent='Press and hold in the box, then tap Paste.';});
 }
-function boot(){
-  readShare();
-  if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
-  if(!CONFIGURED){setupScreen();return;}
+function startApp(){
   S.shown='loading';gateLoading();
   S.session=readSession();
   if(!lsGet(NAME_KEY)) S.authMode='join';
@@ -1420,6 +1768,15 @@ function boot(){
     S.shown='error';
     gateMsg('Can\'t connect',friendlyErr(e),'<button class="btn primary" data-act="reload">Try again</button>');
   });
+}
+function boot(){
+  var sm=/^#list=([A-Za-z0-9_-]{16,64})$/.exec(location.hash||'');
+  if(sm&&CONFIGURED){showShared(sm[1]);return;}
+  readShare();
+  if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
+  if(!CONFIGURED){setupScreen();return;}
+  if(lockInfo()&&bioApi()&&readSession()){showLock(startApp);return;}
+  startApp();
 }
 boot();
 })();

@@ -371,3 +371,25 @@ body.dense .items{gap:8px}
 .fx.snow{z-index:4}
 .toolbar{flex-wrap:wrap;row-gap:8px}
 .toolbar .filters{flex:1 1 100%}
+
+/* ---- v5: holds, planner, share, thank-yous ---- */
+.pill.look{background:#FFF1C9;color:#6B4A00}
+:root[data-mode="dark"] .pill.look{background:#4A3A12;color:#FFD772}
+.bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin-top:7px}
+.bar span{display:block;height:100%;border-radius:99px;background:var(--good)}
+.bar.over span{background:var(--accent)}
+.planner .person{box-shadow:none;background:var(--surface-2)}
+.planner .items{gap:8px}
+.ideas .card-main.idea{display:grid;grid-template-columns:78px minmax(0,1fr);gap:14px;padding:12px 14px;align-items:center;cursor:default}
+.ilink{display:inline-flex;align-items:center;gap:4px;color:var(--accent);font-weight:700;text-decoration:none}
+.card-foot.thanks{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-foot.thanks .from{flex:1 1 100%;font-weight:700}
+.rphoto{width:44px;height:44px;border-radius:12px;object-fit:cover}
+.thanknudge{display:block;width:100%;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.btnrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.shared{max-width:640px;margin:0 auto;padding:18px 0 40px;display:grid;gap:14px}
+.shared .brand{margin-bottom:6px}
+.shared .items{margin-top:4px}
+.shared .card-main{cursor:default}
+.shared .card-foot{display:flex;gap:8px;flex-wrap:wrap}
+.pill.look,.pill.open,.pill.bought{white-space:normal}
