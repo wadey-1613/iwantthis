@@ -524,7 +524,7 @@ function detailHTML(it){
   var got=!!it.received_at;
   var manageBar='';
   if(manage){
-    manageBar='<div class="buy manage"><button class="btn ghost wide" data-act="edit" data-id="'+esc(it.id)+'">Edit this item</button>'+
+    manageBar='<div class="buy manage">'+((safeUrl(it.link)&&!okPhoto(ph))?'<button class="btn ghost wide" data-act="get-pic" data-id="'+esc(it.id)+'">Try to find a picture</button>':'')+'<button class="btn ghost wide" data-act="edit" data-id="'+esc(it.id)+'">Edit this item</button>'+
       (S.v2?'<button class="btn ghost wide" data-act="'+(got?'unreceived':'received')+'" data-id="'+esc(it.id)+'">'+(got?'Put it back on the list':(own?'I\'ve got this':esc(nm(owner))+' has got this'))+'</button>':'')+'</div>';
   }
   return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(it.title)+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
@@ -891,7 +891,17 @@ function surprise(uid){
   toast('How about this for '+nm(m)+'?');
   openSheet('detail',it.id);
 }
-var PICTRIED_KEY='iwt.pictried.v1';
+var PICTRIED_KEY='iwt.pictried.v2';
+function fetchPicFor(it){
+  return api('/functions/v1/link-info',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
+    if(r&&typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<8000000){
+      return shrinkTo(r.image,480,0.72).then(function(d){
+        return rest('PATCH','items?id=eq.'+encodeURIComponent(it.id),{photo:d},'return=minimal').then(function(){return true;});
+      });
+    }
+    return false;
+  });
+}
 function backfillPics(){
   if(S.linkOff||S.backfilling) return;
   var tried={};try{tried=JSON.parse(lsGet(PICTRIED_KEY)||'{}')||{};}catch(e){}
@@ -901,19 +911,24 @@ function backfillPics(){
   todo.reduce(function(p,it){
     return p.then(function(){
       if(S.linkOff) return;
-      return api('/functions/v1/link-info',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
-        tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));
-        if(r&&typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<3000000){
-          return shrinkTo(r.image,480,0.72).then(function(d){
-            return rest('PATCH','items?id=eq.'+encodeURIComponent(it.id),{photo:d},'return=minimal').then(function(){changed=true;});
-          });
-        }
-      }).catch(function(e){
+      return fetchPicFor(it).then(function(ok){tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));if(ok) changed=true;})
+      .catch(function(e){
         if(e&&(e.status===404||e.status===401||e.status===403)) S.linkOff=true;
         else {tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));}
       });
     });
   },Promise.resolve()).then(function(){S.backfilling=false;if(changed) refresh();},function(){S.backfilling=false;});
+}
+function getPic(id){
+  var it=getItem(id);if(!it||!safeUrl(it.link)||!canManage(it.owner)) return;
+  var b=document.querySelector('[data-act="get-pic"]');if(b){b.disabled=true;b.textContent='Looking for a picture…';}
+  fetchPicFor(it).then(function(ok){
+    if(ok){toast('Picture added');closeSheet();return refresh();}
+    toast("Couldn't find a picture on that page. Use Edit to add your own photo.");if(b){b.disabled=false;b.textContent='Try to find a picture';}
+  }).catch(function(e){
+    toast(e&&(e.status===404||e.status===401||e.status===403)?'Reading links isn\'t switched on yet.':'Couldn\'t reach that page. Try again later.');
+    if(b){b.disabled=false;b.textContent='Try to find a picture';}
+  });
 }
 
 /* ================= loading data ================= */
@@ -1295,6 +1310,7 @@ document.addEventListener('click',function(e){
   else if(a==='pref'){var v=el.dataset.v;setPref(el.dataset.k,el.dataset.k==='accent'?parseInt(v,10):v);paintMain();}
   else if(a==='view'){setPref('layout',el.dataset.v);paintMain();}
   else if(a==='surprise') surprise(el.dataset.uid);
+  else if(a==='get-pic') getPic(id);
   else if(a==='prefsw'){setPref(el.dataset.k,!PREF[el.dataset.k]);paintMain();}
   else if(a==='rem') setRem(el.dataset.k);
   else if(a==='push-on') pushOn();
