@@ -272,7 +272,7 @@ function authHTML(err){
     '<button type="button" class="chip" style="min-height:50px;border-radius:999px" data-act="authmode" data-mode="signin" aria-pressed="'+(!join)+'">Sign in</button>'+
     '<button type="button" class="chip" style="min-height:50px;border-radius:999px" data-act="authmode" data-mode="join" aria-pressed="'+join+'">I\'m new</button></div>'+
     '<form id="authForm" class="form" autocomplete="off" data-mode="'+S.authMode+'">'+
-    (join?'<div class="field"><label for="a-code">Family code</label><input id="a-code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" required></div>':'')+
+    (join?'<div class="field"><label for="a-code">Family code</label><input id="a-code" type="text" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" required></div>':'')+
     '<div class="field"><label for="a-name">Your name</label><input id="a-name" type="text" maxlength="30" required autocomplete="off" value="'+esc(join?'':last)+'"></div>'+
     '<div class="field"><label for="a-pin">'+(join?'Choose a PIN':'Your PIN')+'</label>'+pinInput('a-pin')+(join?'<span class="hint">At least 6 characters. Numbers are fine. Remember it, you\'ll need it on a new phone.</span>':'')+'</div>'+
     (join?avRowHTML()+'<fieldset class="field"><legend>Your colour</legend>'+swatchesHTML('a-',0)+'</fieldset>':'')+
@@ -945,7 +945,7 @@ function submitAuth(form){
   var p;
   if(join){
     var cEl=form.querySelector('input[name="a--color"]:checked');
-    p=rpc('join_family',{p_code:$('#a-code').value.trim(),p_name:name,p_pin:pin,p_color:cEl?cEl.value:PALETTE[0]});
+    p=rpc('join_family',{p_code:$('#a-code').value.replace(/\s+/g,''),p_name:name,p_pin:pin,p_color:cEl?cEl.value:PALETTE[0]});
   }else p=rpc('sign_in',{p_name:name,p_pin:pin});
   p.then(function(r){
     if(r&&r.ok){
