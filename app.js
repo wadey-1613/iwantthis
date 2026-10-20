@@ -11,6 +11,7 @@ var POLL_MS=20000;
 
 var PALETTE=['#C2364A','#2F7D5B','#2D6CB5','#A5650F','#7A4BB8','#0E7C86'];
 var COLOUR_NAMES=['Cranberry','Pine','Blue','Amber','Plum','Teal'];
+var ACCENTS=['#3DDC63','#4C9BFF','#FF5C8A','#FFB445','#A77BFF','#35D3E0'],ACC_NAMES=['Green','Blue','Pink','Amber','Purple','Cyan'];
 var OCC=[['anytime','Anytime'],['birthday','Birthday'],['christmas','Christmas']];
 var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var P={
@@ -57,7 +58,7 @@ var S={
 var PREF_KEY='iwt.prefs.v1';
 function readPrefs(){
   var p={};try{p=JSON.parse(lsGet(PREF_KEY)||'{}')||{};}catch(e){}
-  return {theme:['auto','light','dark'].indexOf(p.theme)>=0?p.theme:'auto',accent:(p.accent>=0&&p.accent<6)?(p.accent|0):0,
+  return {theme:['auto','light','dark'].indexOf(p.theme)>=0?p.theme:'dark',accent:(p.accent>=0&&p.accent<6)?(p.accent|0):0,
     size:['n','l','xl'].indexOf(p.size)>=0?p.size:'n',layout:(p.layout==='grid'||p.layout==='list')?p.layout:'big',dense:!!p.dense,hidePrices:!!p.hidePrices,snow:!!p.snow,calm:!!p.calm};
 }
 var PREF=readPrefs();
@@ -67,7 +68,7 @@ function applyPrefs(){
   de.dataset.mode=dark?'dark':'light';de.dataset.accent=String(PREF.accent);de.dataset.size=PREF.size;
   var b=document.body;if(!b) return;
   b.classList.toggle('v-big',PREF.layout==='big');b.classList.toggle('v-grid',PREF.layout==='grid');b.classList.toggle('v-list',PREF.layout==='list');b.classList.toggle('dense',PREF.dense);b.classList.toggle('noprice',PREF.hidePrices);
-  try{var tc=document.querySelectorAll('meta[name=theme-color]');for(var i=0;i<tc.length;i++) tc[i].setAttribute('content',dark?'#15132B':'#F6F4FB');}catch(e){}
+  try{var tc=document.querySelectorAll('meta[name=theme-color]');for(var i=0;i<tc.length;i++) tc[i].setAttribute('content',dark?'#06090B':'#F2F8F4');}catch(e){}
   if(window.iwtSnow) window.iwtSnow(PREF.snow);
 }
 function setPref(k,v){PREF[k]=v;lsSet(PREF_KEY,JSON.stringify(PREF));applyPrefs();}
@@ -639,7 +640,7 @@ function meHTML(){
     '<button class="btn ghost small" data-act="profile">Edit profile</button></section>';
   h+=blk('Make it yours','These only change how the app looks on this phone.',
     '<div class="lbl2">Light or dark</div>'+optRow('theme',PREF.theme,[['auto','Match my phone'],['light','Light'],['dark','Dark']])+
-    '<div class="lbl2">Colour</div><div class="accents" role="group">'+PALETTE.map(function(c,i){return '<button type="button" class="acc" data-act="pref" data-k="accent" data-v="'+i+'" style="--c:'+c+'" aria-label="'+COLOUR_NAMES[i]+'" aria-pressed="'+(PREF.accent===i)+'"></button>';}).join('')+'</div>'+
+    '<div class="lbl2">Colour</div><div class="accents" role="group">'+ACCENTS.map(function(c,i){return '<button type="button" class="acc" data-act="pref" data-k="accent" data-v="'+i+'" style="--c:'+c+'" aria-label="'+ACC_NAMES[i]+'" aria-pressed="'+(PREF.accent===i)+'"></button>';}).join('')+'</div>'+
     '<div class="lbl2">Text size</div>'+optRow('size',PREF.size,[['n','Normal'],['l','Large'],['xl','Extra large']])+
     '<div class="lbl2">Lists look like</div>'+optRow('layout',PREF.layout,[['big','Big cards'],['grid','Photo grid'],['list','A list']])+
     '<div class="trows">'+switchRow('Compact','Smaller cards, more on screen','prefsw','dense',PREF.dense)+switchRow('Hide prices','Keep the lists simple','prefsw','hidePrices',PREF.hidePrices)+switchRow('Snowfall','Gentle falling snow, for the festive season','prefsw','snow',PREF.snow)+switchRow('Calm mode','No confetti when you tick things off','prefsw','calm',PREF.calm)+'</div>');
