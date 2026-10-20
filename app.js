@@ -1374,8 +1374,30 @@ function enter(){
 function leaveToAuth(msg){
   S.avDraft={data:'',dirty:false};S.uid=null;S.tab='mine';S.viewing=null;S.filter='all';S.showReceived=false;S.members=new Map();S.items=[];S.itemMap=new Map();S.claims=new Map();S.santa=[];S.sig='';
   if(S.sheet) closeSheet();
+  var hasCode=/[#&]code=/.test(location.hash||'');
+  if(!msg&&!lsGet(NAME_KEY)&&!hasCode){showWelcome();return;}
+  if(hasCode&&!lsGet(NAME_KEY)) S.authMode='join';
   showAuth(msg||'');
 }
+function logoSVG(n){
+  return '<svg class="logo" width="'+n+'" height="'+n+'" viewBox="0 0 512 512" aria-hidden="true"><g transform="rotate(-18 256 256)"><path d="M198 92h116l56 64v272a18 18 0 0 1-18 18H160a18 18 0 0 1-18-18V156z" fill="currentColor"/><circle cx="256" cy="158" r="28" fill="var(--bg)"/><path d="M214 330l84-96" stroke="var(--bg)" stroke-width="22" stroke-linecap="round"/><circle cx="222" cy="252" r="17" fill="var(--bg)"/><circle cx="290" cy="326" r="17" fill="var(--bg)"/></g></svg>';
+}
+function showWelcome(){
+  S.shown='welcome';
+  gate('<div class="welcome"><div class="w-logo">'+logoSVG(132)+'</div><h1>I want <em>this</em></h1><p class="w-tag">Wish. Share. Gift.</p>'+
+    '<p class="w-lead">The family wish list. Add what you want, see what everyone else wants, and find the best price.</p>'+
+    '<div class="w-actions"><button class="btn primary wide" data-act="welcome-start">Get started</button><button class="btn ghost wide" data-act="welcome-signin">Sign in</button></div></div>');
+}
+var ONB=[['gift','Make your wish list','Add things by name, link or photo. A link shows the picture straight away.'],
+  ['lock','Surprises stay secret','The family can tick off what they have bought. You never see the ticks on your own list.'],
+  ['tag','Find the best price','Tap any item to compare prices across the shops, lowest first.']];
+function showOnboard(i){
+  S.shown='onboard';var o=ONB[i],last=i===ONB.length-1;
+  gate('<div class="welcome onb"><div class="o-ic">'+ic(o[0],64)+'</div><h1>'+esc(o[1])+'</h1><p class="w-lead">'+esc(o[2])+'</p>'+
+    '<div class="dots" aria-hidden="true">'+ONB.map(function(_,k){return '<span'+(k===i?' class="on"':'')+'></span>';}).join('')+'</div>'+
+    '<div class="w-actions"><button class="btn primary wide" data-act="onb-next" data-i="'+i+'">'+(last?'Get started':'Next')+'</button>'+(last?'':'<button class="btn linkish" data-act="onb-skip">Skip</button>')+'</div></div>');
+}
+function endOnboard(){lsSet('iwt.onb','1');S.authMode='join';showAuth('');}
 function submitAuth(form){
   var join=form.dataset.mode==='join',btn=form.querySelector('button[type=submit]');
   var name=$('#a-name').value.trim(),pin=$('#a-pin').value;
@@ -1637,6 +1659,10 @@ document.addEventListener('click',function(e){
   else if(a==='pref'){var v=el.dataset.v;setPref(el.dataset.k,el.dataset.k==='accent'?parseInt(v,10):v);paintMain();}
   else if(a==='view'){setPref('layout',el.dataset.v);paintMain();}
   else if(a==='surprise') surprise(el.dataset.uid);
+  else if(a==='welcome-start'){if(lsGet('iwt.onb')==='1'){S.authMode='join';showAuth('');}else showOnboard(0);}
+  else if(a==='welcome-signin'){S.authMode='signin';showAuth('');}
+  else if(a==='onb-next'){var oi=parseInt(el.dataset.i,10)||0;if(oi>=ONB.length-1) endOnboard();else showOnboard(oi+1);}
+  else if(a==='onb-skip') endOnboard();
   else if(a==='bio-toggle') bioToggle();
   else if(a==='bio-unlock') tryUnlock();
   else if(a==='bio-pin') bioPin();
