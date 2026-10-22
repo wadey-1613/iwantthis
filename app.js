@@ -211,6 +211,10 @@ function idbOpen(){return new Promise(function(res,rej){try{var r=indexedDB.open
 function idbPut(v){idbOpen().then(function(d){d.transaction('k','readwrite').objectStore('k').put(v,'session');}).catch(function(){});}
 function idbGet(){return idbOpen().then(function(d){return new Promise(function(res){var q=d.transaction('k').objectStore('k').get('session');q.onsuccess=function(){res(q.result||null);};q.onerror=function(){res(null);};});}).catch(function(){return null;});}
 function idbClear(){idbOpen().then(function(d){d.transaction('k','readwrite').objectStore('k').delete('session');}).catch(function(){});}
+var CRED_KEY='iwt.cred.v1';
+function credGet(){try{var c=JSON.parse(lsGet(CRED_KEY)||'null');return c&&c.n&&c.p?c:null;}catch(e){return null;}}
+function credSet(n,pin){lsSet(CRED_KEY,JSON.stringify({n:n,p:pin}));}
+function credClear(){lsSet(CRED_KEY,'');}
 var SEEN_KEY='iwt.seen.v1',KEEP_DAYS=14;
 function touchSeen(){lsSet(SEEN_KEY,String(Date.now()));}
 function stale(){var t=+lsGet(SEEN_KEY)||0;return t&&Date.now()-t>KEEP_DAYS*864e5;}
@@ -1201,7 +1205,7 @@ function tryUnlock(){
     var el=$('#lock-msg');if(el) el.innerHTML='<div class="form-error">'+(e&&e.name==='NotAllowedError'?'That didn\'t unlock. Try again.':'Couldn\'t unlock. Try again, or use your PIN.')+'</div>';
   });
 }
-function bioPin(){lsSet(LOCK_KEY,'');lsSet(SESSION_KEY,'');idbClear();location.reload();}
+function bioPin(){lsSet(LOCK_KEY,'');lsSet(SESSION_KEY,'');idbClear();credClear();location.reload();}
 
 /* ================= fun: confetti, snow, surprise, picture backfill ================= */
 function reduceMotion(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
@@ -1429,7 +1433,17 @@ function enter(){
   S.shown='loading';gateLoading();
   S.sig='';
   return rpc('current_member').then(function(id){
-    if(!id){leaveToAuth();return;}
+    if(!id){
+      var cr=credGet();
+      if(cr&&!S.credTried){
+        S.credTried=true;
+        return rpc('sign_in',{p_name:cr.n,p_pin:cr.p}).then(function(r){
+          if(r&&r.ok) return enter();
+          credClear();leaveToAuth();
+        },function(e){if(e&&e.network) throw e;credClear();leaveToAuth();});
+      }
+      leaveToAuth();return;
+    }
     S.uid=id;S.loading=false;
     return loadAll();
   }).catch(function(e){S.shown='error';gateMsg('Lists unavailable',friendlyErr(e),'<button class="btn primary" data-act="reload">Try again</button>');});
@@ -1473,7 +1487,7 @@ function submitAuth(form){
   }else p=rpc('sign_in',{p_name:name,p_pin:pin});
   p.then(function(r){
     if(r&&r.ok){
-      lsSet(NAME_KEY,name);
+      lsSet(NAME_KEY,name);credSet(name,pin);
       var av=(join&&S.avDraft.dirty&&S.avDraft.data)?rpc('set_avatar',{p_avatar:S.avDraft.data}).catch(function(){}):Promise.resolve();
       return av.then(function(){S.avDraft={data:'',dirty:false};return enter();});
     }
@@ -1486,7 +1500,7 @@ function submitAuth(form){
   });
 }
 function signOut(){
-  lsSet(LOCK_KEY,'');
+  lsSet(LOCK_KEY,'');credClear();
   rpc('sign_out').catch(function(){}).then(function(){leaveToAuth();S.authMode='signin';showAuth('');});
 }
 
@@ -1605,7 +1619,7 @@ function savePin(form){
   var btn=form.querySelector('button[type=submit]');btn.disabled=true;
   rpc('change_pin',{p_pin:pin}).then(function(r){
     btn.disabled=false;
-    if(r&&r.ok){$('#n-pin').value='';msgBox('#n-msg','form-ok','PIN changed. Use the new one next time you sign in.');}
+    if(r&&r.ok){var cc=credGet();if(cc) credSet(cc.n,pin);$('#n-pin').value='';msgBox('#n-msg','form-ok','PIN changed. Use the new one next time you sign in.');}
     else msgBox('#n-msg','form-error',authMsg(r&&r.error));
   }).catch(function(){btn.disabled=false;msgBox('#n-msg','form-error',"That didn't save. Check your connection.");});
 }
@@ -1897,7 +1911,7 @@ function boot(){
     if(lockInfo()&&bioApi()&&readSession()){showLock(startApp);return;}
     startApp();
   };
-  if(stale()){try{lsSet(SESSION_KEY,'');}catch(e){}idbClear();S.session=null;lsSet(SEEN_KEY,String(Date.now()));go();return;}
+  if(stale()){credClear();try{lsSet(SESSION_KEY,'');}catch(e){}idbClear();S.session=null;lsSet(SEEN_KEY,String(Date.now()));go();return;}
   if(readSession()){touchSeen();go();return;}
   idbGet().then(function(v){if(v&&v.access_token&&v.refresh_token){lsSet(SESSION_KEY,JSON.stringify(v));}touchSeen();go();});
 }
