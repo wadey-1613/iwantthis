@@ -382,7 +382,7 @@ function statusHTML(i){
 function cardHTML(i,showStatus){
   var got=!!i.received_at;
   return '<li class="card'+(got?' got':'')+'"><button class="card-main" data-act="open" data-id="'+esc(i.id)+'">'+mediaHTML(i)+
-    '<span class="card-body"><span class="card-title">'+esc(i.title)+'</span><span class="card-meta">'+(hasPrice(i)?'<span class="price">about '+fmtPrice(i.price)+'</span>':'')+(priceDrop(i)!=null?'<span class="dropbadge">Now '+fmtPrice(priceDrop(i))+'</span>':'')+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</span></span>'+
+    '<span class="card-body"><span class="card-title">'+esc(dispTitle(i))+'</span><span class="card-meta">'+(hasPrice(i)?'<span class="price">about '+fmtPrice(i.price)+'</span>':'')+(priceDrop(i)!=null?'<span class="dropbadge">Now '+fmtPrice(priceDrop(i))+'</span>':'')+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</span></span>'+
     '<span class="chev">'+ic('chevron',20)+'</span></button>'+
     (showStatus&&!got?'<div class="card-foot">'+statusHTML(i)+'</div>':'')+'</li>';
 }
@@ -529,10 +529,10 @@ function detailHTML(it){
   var got=!!it.received_at;
   var manageBar='';
   if(manage){
-    manageBar='<div class="buy manage">'+((safeUrl(it.link)&&!okPhoto(ph))?'<button class="btn ghost wide" data-act="get-pic" data-id="'+esc(it.id)+'">Try to find a picture</button>':'')+'<button class="btn ghost wide" data-act="edit" data-id="'+esc(it.id)+'">Edit this item</button>'+
+    manageBar='<div class="buy manage">'+((safeUrl(it.link)&&(!okPhoto(ph)||isGenericTitle(it.title)))?'<button class="btn ghost wide" data-act="get-pic" data-id="'+esc(it.id)+'">Try to find a picture</button>':'')+'<button class="btn ghost wide" data-act="edit" data-id="'+esc(it.id)+'">Edit this item</button>'+
       (S.v2?'<button class="btn ghost wide" data-act="'+(got?'unreceived':'received')+'" data-id="'+esc(it.id)+'">'+(got?'Put it back on the list':(own?'I\'ve got this':esc(nm(owner))+' has got this'))+'</button>':'')+'</div>';
   }
-  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(it.title)+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
+  return '<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title" tabindex="-1">'+esc(dispTitle(it))+'</h2><button class="icon-btn" data-act="close" aria-label="Close">'+ic('close')+'</button></div>'+
     (okPhoto(ph)&&!safeUrl(it.link)?'<img class="hero" src="'+ph+'" alt="">':'')+
     '<div class="meta">'+(it.priority?'<span class="pickbadge">'+ic('star',13)+' Top pick</span>':'')+tagHTML(it)+(hasPrice(it)?'<span class="price">about '+fmtPrice(it.price)+'</span>':'')+'<span>'+(own?'On your list':'On '+esc(nm(owner))+'’s list')+'</span>'+(got?'<span class="gotbadge">'+ic('check',13)+' Got it</span>':'')+'</div>'+
     (it.note?'<p class="note">'+esc(it.note)+'</p>':'')+
@@ -830,7 +830,7 @@ function fillFromLink(auto){
     r=r||{};
     var t=$('#f-title'),pr=$('#f-price'),done=[];
     if(S.draft&&(r.title||r.description||r.site)){S.draft.meta={url:u,title:String(r.title||'').slice(0,200),desc:String(r.description||'').slice(0,400),site:String(r.site||'').slice(0,80)};}
-    if(r.title&&!t.value.trim()){t.value=String(r.title).slice(0,120);done.push('name');}
+    if(r.title&&!isGenericTitle(r.title)&&(!t.value.trim()||isGenericTitle(t.value))){t.value=String(r.title).slice(0,120);done.push('name');}
     if(typeof r.price==='number'&&isFinite(r.price)&&r.price>=0&&!pr.value.trim()){pr.value=String(Math.round(r.price*100)/100);done.push('price');}
     var imgP=Promise.resolve();
     if(typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<3000000&&S.draft&&!S.draft.photo){
@@ -987,7 +987,7 @@ function ideaFill(){
   api('/functions/v1/link-info',{method:'POST',body:{url:u}}).then(function(r){
     if($('#ideaForm')!==form) return;
     r=r||{};var t=$('#i-title'),p=$('#i-price'),done=[];
-    if(r.title&&!t.value.trim()){t.value=String(r.title).slice(0,120);done.push('name');}
+    if(r.title&&!isGenericTitle(r.title)&&(!t.value.trim()||isGenericTitle(t.value))){t.value=String(r.title).slice(0,120);done.push('name');}
     if(typeof r.price==='number'&&isFinite(r.price)&&r.price>=0&&!p.value.trim()){p.value=String(Math.round(r.price*100)/100);done.push('price');}
     var imgP=Promise.resolve();
     if(typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<8000000&&S.draft){
@@ -1201,27 +1201,34 @@ function surprise(uid){
   toast('How about this for '+nm(m)+'?');
   openSheet('detail',it.id);
 }
-var PICTRIED_KEY='iwt.pictried.v2';
-function fetchPicFor(it){
+var PICTRIED_KEY='iwt.fix.v1';
+function fixFromLink(it){
   return api('/functions/v1/link-info',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
-    if(r&&typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<8000000){
-      return shrinkTo(r.image,480,0.72).then(function(d){
-        return rest('PATCH','items?id=eq.'+encodeURIComponent(it.id),{photo:d},'return=minimal').then(function(){return true;});
-      });
+    r=r||{};var body={},imgP=Promise.resolve();
+    if(isGenericTitle(it.title)&&r.title&&!isGenericTitle(r.title)){
+      body.title=String(r.title).slice(0,120);
+      if(S._i3){body.link_title=body.title;if(r.description) body.link_desc=String(r.description).slice(0,400);if(r.site) body.link_site=String(r.site).slice(0,80);}
     }
-    return false;
+    if(!it.photo_hash&&typeof r.image==='string'&&/^data:image\/(jpeg|png|webp|gif);base64,/.test(r.image)&&r.image.length<8000000){
+      imgP=shrinkTo(r.image,480,0.72).then(function(d){body.photo=d;});
+    }
+    return imgP.then(function(){
+      if(!Object.keys(body).length) return false;
+      return rest('PATCH','items?id=eq.'+encodeURIComponent(it.id),body,'return=minimal').then(function(){return true;});
+    });
   });
 }
+function fetchPicFor(it){return fixFromLink(it);}
 function backfillPics(){
   if(S.linkOff||S.backfilling) return;
   var tried={};try{tried=JSON.parse(lsGet(PICTRIED_KEY)||'{}')||{};}catch(e){}
-  var todo=S.items.filter(function(i){return safeUrl(i.link)&&!i.photo_hash&&!tried[i.id]&&canManage(i.owner);}).slice(0,4);
+  var todo=S.items.filter(function(i){return safeUrl(i.link)&&(!i.photo_hash||isGenericTitle(i.title))&&!tried[i.id]&&canManage(i.owner);}).slice(0,5);
   if(!todo.length) return;
   S.backfilling=true;var changed=false;
   todo.reduce(function(p,it){
     return p.then(function(){
       if(S.linkOff) return;
-      return fetchPicFor(it).then(function(ok){tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));if(ok) changed=true;})
+      return fixFromLink(it).then(function(ok){tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));if(ok) changed=true;})
       .catch(function(e){
         if(e&&(e.status===404||e.status===401||e.status===403)) S.linkOff=true;
         else {tried[it.id]=1;lsSet(PICTRIED_KEY,JSON.stringify(tried));}
@@ -1761,13 +1768,29 @@ setInterval(function(){if(!document.hidden&&S.uid) loadAll();},POLL_MS);
 
 /* ================= boot ================= */
 function findUrl(t){var m=/https?:\/\/[^\s<>"']+/i.exec(String(t||''));return m?m[0].replace(/[).,;]+$/,''):'';}
+function isGenericTitle(t){
+  var x=String(t||'').toLowerCase().replace(/https?:\/\/\S+/g,'');
+  x=x.replace(/\b(check|checkout|take a look|have a look|look)( this| it| that)?( item)?( out)?\b/g,'').replace(/\b(on|at|from|via)\s+(amazon|ebay|argos|currys|john lewis)(\.[a-z.]+)?\b/g,'')
+    .replace(/\b(i thought you.{0,20}like|thought you might like|found this|see this|shared with you)\b/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  return x.length<3;
+}
+function cleanShareTitle(t){
+  t=String(t||'').replace(/^\s*check( this| it)?( item)? out( this| it| that)?( item)?( (on|at|from) \w+(\.[a-z.]+)?)?\s*[:!,.-]*\s*/i,'').replace(/\s*[:\-–]\s*$/,'').replace(/\s+/g,' ').trim();
+  return isGenericTitle(t)?'':t;
+}
+function dispTitle(i){
+  if(!isGenericTitle(i.title)) return i.title;
+  if(i.link_title&&!isGenericTitle(i.link_title)) return i.link_title;
+  var u=safeUrl(i.link),g=u?guessTitle(u):'';
+  return g||(u?'Link from '+hostOf(u):i.title);
+}
 function readShare(){
   try{
     var q=new URLSearchParams(location.search),u=findUrl(q.get('url'))||findUrl(q.get('text'))||findUrl(q.get('title'));
     if(!u) return;
     var t=(q.get('title')||'').replace(findUrl(q.get('title')),'').trim();
     if(!t) t=String(q.get('text')||'').replace(findUrl(q.get('text')),'').replace(/\s+/g,' ').trim();
-    S.pendingShare={url:u,title:t.slice(0,120)};
+    S.pendingShare={url:u,title:cleanShareTitle(t).slice(0,120)};
     history.replaceState(null,'',location.pathname+location.hash);
   }catch(e){}
 }
