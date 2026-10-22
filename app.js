@@ -842,7 +842,7 @@ function fillFromLink(auto){
       if(!done.length){var g=guessTitle(u);if(g&&!t.value.trim()){t.value=g;done.push('name');}}
       if(S.draft&&!(S.draft.meta&&S.draft.meta.url===u)){S.draft.meta={url:u,title:'',desc:'',site:hostOf(u)};syncLinkCard();}
       var had=!!(r.title||r.price!=null||r.image||r.description);
-      s2.textContent=done.length?'Filled in the '+done.join(', ')+' from the link. Check it looks right.':(had?'Details from the link are in. Check they look right.':'Couldn\'t find details on that page. Fill them in by hand.');
+      s2.textContent=done.length?'Filled in the '+done.join(', ')+' from the link. Check it looks right.':(had?'Details from the link are in. Check they look right.':'Couldn\'t find details on that page. Fill them in by hand.'+(r.steps&&r.steps.length?' ('+r.steps.join(', ')+')':(r.error?' ('+r.error+')':'')));
     });
   }).catch(function(e){
     var s2=$('#f-linkstat');
