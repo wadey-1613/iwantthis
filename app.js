@@ -169,11 +169,19 @@ function daysUntil(month,day){
 function inDays(n){return n===0?'today':n===1?'tomorrow':'in '+n+' days';}
 
 /* ================= server connection (Supabase over plain fetch) ================= */
+var IDB_NAME='iwt-keep';
+function idbOpen(){return new Promise(function(res,rej){try{var r=indexedDB.open(IDB_NAME,1);r.onupgradeneeded=function(){r.result.createObjectStore('k');};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};}catch(e){rej(e);}});}
+function idbPut(v){idbOpen().then(function(d){d.transaction('k','readwrite').objectStore('k').put(v,'session');}).catch(function(){});}
+function idbGet(){return idbOpen().then(function(d){return new Promise(function(res){var q=d.transaction('k').objectStore('k').get('session');q.onsuccess=function(){res(q.result||null);};q.onerror=function(){res(null);};});}).catch(function(){return null;});}
+function idbClear(){idbOpen().then(function(d){d.transaction('k','readwrite').objectStore('k').delete('session');}).catch(function(){});}
+var SEEN_KEY='iwt.seen.v1',KEEP_DAYS=14;
+function touchSeen(){lsSet(SEEN_KEY,String(Date.now()));}
+function stale(){var t=+lsGet(SEEN_KEY)||0;return t&&Date.now()-t>KEEP_DAYS*864e5;}
 function readSession(){try{var s=JSON.parse(lsGet(SESSION_KEY)||'null');return s&&s.access_token&&s.refresh_token?s:null;}catch(e){return null;}}
 function saveSession(j){
   var now=Math.floor(Date.now()/1000);
   var s={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at||(now+(j.expires_in||3600))};
-  lsSet(SESSION_KEY,JSON.stringify(s));S.session=s;return s;
+  lsSet(SESSION_KEY,JSON.stringify(s));idbPut(s);S.session=s;return s;
 }
 function fail(status,body,network){
   var e=new Error((body&&(body.message||body.msg||body.error_description||body.error))||('HTTP '+status));
@@ -206,7 +214,7 @@ function ensureToken(force){
   var s=S.session||readSession();S.session=s;
   var now=Math.floor(Date.now()/1000);
   if(s&&!force&&s.expires_at-now>60) return Promise.resolve(s);
-  tokenP=(s?refreshSession(s).catch(function(e){if(e.network) throw e;return anonSignIn();}):anonSignIn())
+  tokenP=(s?refreshSession(s).catch(function(e){if(e.network||!(e.status>=400&&e.status<500)) throw e;return anonSignIn();}):anonSignIn())
     .then(function(r){tokenP=null;return r;},function(e){tokenP=null;throw e;});
   return tokenP;
 }
@@ -852,7 +860,7 @@ function fillFromLink(auto){
     });
   }).catch(function(e){
     var s2=$('#f-linkstat');
-    if(e&&(e.status===404||e.status===401||e.status===403)){S.linkOff=true;if(s2) s2.textContent='Reading links isn\'t switched on yet, so type the name in.';}
+    if(e&&(e.status===404||e.status===401||e.status===403)){S.linkOff=true;if(s2) s2.textContent=linkOffMsg(e)+' Type the name in meanwhile.';}
     else if(s2) s2.textContent='Couldn\'t read that link. Type the name in instead.';
     var g=guessTitle(u),t=$('#f-title');if(g&&t&&!t.value.trim()) t.value=g;
   });
@@ -987,7 +995,7 @@ function ideaSheetHTML(id,pid){
 function ideaFill(){
   var u=safeUrl($('#i-link').value),st=$('#i-stat');
   if(!u){if(st) st.textContent='Paste a link first.';return;}
-  if(S.linkOff){if(st) st.textContent='Reading links isn\'t switched on yet.';return;}
+  
   if(st) st.textContent='Reading the link…';
   var form=$('#ideaForm');
   api('/functions/v1/link-info',{method:'POST',body:{url:u}}).then(function(r){
@@ -1002,7 +1010,7 @@ function ideaFill(){
     return imgP.then(function(){var s2=$('#i-stat');if(s2) s2.textContent=done.length?'Filled in the '+done.join(', ')+'.':'Couldn\'t find details on that page.';});
   }).catch(function(e){
     var s2=$('#i-stat');if(e&&(e.status===404||e.status===401||e.status===403)) S.linkOff=true;
-    if(s2) s2.textContent=S.linkOff?'Reading links isn\'t switched on yet.':'Couldn\'t read that link.';
+    if(s2) s2.textContent=S.linkOff?linkOffMsg(e):'Couldn\'t read that link.';
   });
 }
 function saveIdea(f){
@@ -1156,7 +1164,7 @@ function tryUnlock(){
     var el=$('#lock-msg');if(el) el.innerHTML='<div class="form-error">'+(e&&e.name==='NotAllowedError'?'That didn\'t unlock. Try again.':'Couldn\'t unlock. Try again, or use your PIN.')+'</div>';
   });
 }
-function bioPin(){lsSet(LOCK_KEY,'');lsSet(SESSION_KEY,'');location.reload();}
+function bioPin(){lsSet(LOCK_KEY,'');lsSet(SESSION_KEY,'');idbClear();location.reload();}
 
 /* ================= fun: confetti, snow, surprise, picture backfill ================= */
 function reduceMotion(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
@@ -1207,6 +1215,11 @@ function surprise(uid){
   toast('How about this for '+nm(m)+'?');
   openSheet('detail',it.id);
 }
+function linkOffMsg(e){
+  var c=e&&e.status;
+  if(c===404) return "The link reader isn't found on your Supabase (error 404). It must be named exactly link-info.";
+  return 'Supabase turned the link reader away (error '+c+'). In Supabase, open the link-info function, Settings, and switch off "Verify JWT", then Deploy.';
+}
 var PICTRIED_KEY='iwt.fix.v1';
 function fixFromLink(it){
   return api('/functions/v1/link-info',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
@@ -1249,7 +1262,7 @@ function getPic(id){
     if(ok){toast('Picture added');closeSheet();return refresh();}
     toast("Couldn't find a picture on that page. Use Edit to add your own photo.");if(b){b.disabled=false;b.textContent='Try to find a picture';}
   }).catch(function(e){
-    toast(e&&(e.status===404||e.status===401||e.status===403)?'Reading links isn\'t switched on yet.':'Couldn\'t reach that page. Try again later.');
+    toast(e&&(e.status===404||e.status===401||e.status===403)?linkOffMsg(e):'Couldn\'t reach that page. Try again later.');
     if(b){b.disabled=false;b.textContent='Try to find a picture';}
   });
 }
@@ -1842,8 +1855,14 @@ function boot(){
   readShare();
   if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
   if(!CONFIGURED){setupScreen();return;}
-  if(lockInfo()&&bioApi()&&readSession()){showLock(startApp);return;}
-  startApp();
+  try{if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();}catch(e){}
+  var go=function(){
+    if(lockInfo()&&bioApi()&&readSession()){showLock(startApp);return;}
+    startApp();
+  };
+  if(stale()){try{lsSet(SESSION_KEY,'');}catch(e){}idbClear();S.session=null;lsSet(SEEN_KEY,String(Date.now()));go();return;}
+  if(readSession()){touchSeen();go();return;}
+  idbGet().then(function(v){if(v&&v.access_token&&v.refresh_token){lsSet(SESSION_KEY,JSON.stringify(v));}touchSeen();go();});
 }
 boot();
 })();
