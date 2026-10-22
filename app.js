@@ -839,7 +839,7 @@ function fillFromLink(auto){
   if(S.linkOff){var g0=guessTitle(u),t0=$('#f-title');if(g0&&t0&&!t0.value.trim()) t0.value=g0;return;}
   var form=$('#itemForm');
   if(st) st.textContent='Reading the link…';
-  api('/functions/v1/link-info',{method:'POST',body:{url:u}}).then(function(r){
+  api('/functions/v1/clever-service',{method:'POST',body:{url:u}}).then(function(r){
     if(!$('#itemForm')||$('#itemForm')!==form) return;
     r=r||{};
     var t=$('#f-title'),pr=$('#f-price'),done=[];
@@ -998,7 +998,7 @@ function ideaFill(){
   
   if(st) st.textContent='Reading the link…';
   var form=$('#ideaForm');
-  api('/functions/v1/link-info',{method:'POST',body:{url:u}}).then(function(r){
+  api('/functions/v1/clever-service',{method:'POST',body:{url:u}}).then(function(r){
     if($('#ideaForm')!==form) return;
     r=r||{};var t=$('#i-title'),p=$('#i-price'),done=[];
     if(r.title&&!isGenericTitle(r.title)&&(!t.value.trim()||isGenericTitle(t.value))){t.value=String(r.title).slice(0,120);done.push('name');}
@@ -1217,12 +1217,12 @@ function surprise(uid){
 }
 function linkOffMsg(e){
   var c=e&&e.status;
-  if(c===404) return "The link reader isn't found on your Supabase (error 404). It must be named exactly link-info.";
-  return 'Supabase turned the link reader away (error '+c+'). In Supabase, open the link-info function, Settings, and switch off "Verify JWT", then Deploy.';
+  if(c===404) return "The link reader isn't found on your Supabase (error 404). It must be named clever-service.";
+  return 'Supabase turned the link reader away (error '+c+'). In Supabase, open the clever-service function, Settings, and switch off "Verify JWT", then Deploy.';
 }
 var PICTRIED_KEY='iwt.fix.v1';
 function fixFromLink(it){
-  return api('/functions/v1/link-info',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
+  return api('/functions/v1/clever-service',{method:'POST',body:{url:safeUrl(it.link)}}).then(function(r){
     r=r||{};var body={},imgP=Promise.resolve();
     if(isGenericTitle(it.title)&&r.title&&!isGenericTitle(r.title)){
       body.title=String(r.title).slice(0,120);
